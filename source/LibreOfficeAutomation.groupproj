@@ -1,0 +1,48 @@
+<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+    <PropertyGroup>
+        <ProjectGuid>{71944596-710C-491D-B2EF-3C198D654086}</ProjectGuid>
+    </PropertyGroup>
+    <ItemGroup>
+        <Projects Include="demo\OODemo.dproj">
+            <Dependencies/>
+        </Projects>
+        <Projects Include="tests\OOAutomationTests.dproj">
+            <Dependencies/>
+        </Projects>
+    </ItemGroup>
+    <ProjectExtensions>
+        <Borland.Personality>Default.Personality.12</Borland.Personality>
+        <Borland.ProjectType/>
+        <BorlandProject>
+            <Default.Personality/>
+        </BorlandProject>
+    </ProjectExtensions>
+    <Target Name="OODemo">
+        <MSBuild Projects="demo\OODemo.dproj"/>
+    </Target>
+    <Target Name="OODemo:Clean">
+        <MSBuild Projects="demo\OODemo.dproj" Targets="Clean"/>
+    </Target>
+    <Target Name="OODemo:Make">
+        <MSBuild Projects="demo\OODemo.dproj" Targets="Make"/>
+    </Target>
+    <Target Name="OOAutomationTests">
+        <MSBuild Projects="tests\OOAutomationTests.dproj"/>
+    </Target>
+    <Target Name="OOAutomationTests:Clean">
+        <MSBuild Projects="tests\OOAutomationTests.dproj" Targets="Clean"/>
+    </Target>
+    <Target Name="OOAutomationTests:Make">
+        <MSBuild Projects="tests\OOAutomationTests.dproj" Targets="Make"/>
+    </Target>
+    <Target Name="Build">
+        <CallTarget Targets="OODemo;OOAutomationTests"/>
+    </Target>
+    <Target Name="Clean">
+        <CallTarget Targets="OODemo:Clean;OOAutomationTests:Clean"/>
+    </Target>
+    <Target Name="Make">
+        <CallTarget Targets="OODemo:Make;OOAutomationTests:Make"/>
+    </Target>
+    <Import Project="$(BDS)\Bin\CodeGear.Group.Targets" Condition="Exists('$(BDS)\Bin\CodeGear.Group.Targets')"/>
+</Project>
