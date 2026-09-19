@@ -70,7 +70,7 @@ supported so far.
 
 ### Background
 
-The library goes back to the article "OpenOffice mit Delphi fernsteuern" in the German magazine
+The library goes back to the article "OO-Automation" in the German magazine
 *Der Entwickler*, issue 6/2003. More at [delphi-tutorials.de](https://delphi-tutorials.de/projekte/).
 
 ### License
@@ -148,7 +148,7 @@ Writer unterstützt.
 
 ### Hintergrund
 
-Die Bibliothek geht auf den Artikel „OpenOffice mit Delphi fernsteuern“ in *Der Entwickler*, Ausgabe 6/2003,
+Die Bibliothek geht auf den Artikel „OO-Automation“ in *Der Entwickler*, Ausgabe 6/2003,
 zurück. Mehr dazu auf [delphi-tutorials.de](https://delphi-tutorials.de/projekte/).
 
 ### Lizenz
