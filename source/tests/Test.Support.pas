@@ -38,6 +38,7 @@ type
     class procedure CloseOwnDocuments; static;
     class function OdtContains(const AFileName, AText: string): Boolean; static;
     class function CreateCalcFile(const ATarget: string): string; static;
+    class function CreateMarkedDocument(const ATarget: string): string; static;
     class property TempDir: string read FTempDir;
     class property SpecialDir: string read FSpecialDir;
   end;
@@ -281,6 +282,61 @@ begin
     end;
   finally
     stream.Free;
+  end;
+end;
+
+class function TTestEnvironment.CreateMarkedDocument(const ATarget: string): string;
+var
+  argument: OleVariant;
+  document: OleVariant;
+  text: OleVariant;
+  cursor: OleVariant;
+  bookmark: OleVariant;
+  frame: OleVariant;
+  pageStyle: OleVariant;
+begin
+  // Ein Dokument, das alles traegt, was die Reichweite des Ersetzens (B32) und das Lesen von
+  // Textmarken (B31) pruefbar macht: das Wort MARKE in Fliesstext, Kopf, Fuss und Rahmen, dazu
+  // eine punktfoermige und eine umspannende Textmarke.
+  Result := FTempDir + ATarget;
+  argument := FServiceManager.Bridge_GetStruct('com.sun.star.beans.PropertyValue');
+  argument.Name := 'Hidden';
+  argument.Value := True;
+  document := FDesktop.loadComponentFromURL('private:factory/swriter', '_blank', 0,
+    MakeSequence([argument]));
+  try
+    text := document.getText;
+    cursor := text.createTextCursor;
+    text.insertString(cursor, 'MARKE im Fliesstext ', False);
+
+    // Punktfoermige Textmarke: bAbsorb = False, sie umspannt nichts
+    bookmark := document.createInstance('com.sun.star.text.Bookmark');
+    bookmark.setName('Punkt');
+    text.insertTextContent(cursor, bookmark, False);
+
+    // Umspannende Textmarke: erst schreiben, dann die Zeichen nach links auswaehlen und absorbieren
+    text.insertString(cursor, 'SPANNE', False);
+    cursor.goLeft(VarAsType(6, varSmallint), True);
+    bookmark := document.createInstance('com.sun.star.text.Bookmark');
+    bookmark.setName('Spanne');
+    text.insertTextContent(cursor, bookmark, True);
+
+    frame := document.createInstance('com.sun.star.text.TextFrame');
+    text.insertTextContent(text.getEnd, frame, False);
+    frame.getText.setString('MARKE im Rahmen');
+
+    pageStyle := document.getStyleFamilies.getByName('PageStyles').getByName('Standard');
+    pageStyle.HeaderIsOn := True;
+    pageStyle.FooterIsOn := True;
+    pageStyle.HeaderText.setString('MARKE im Kopf');
+    pageStyle.FooterText.setString('MARKE im Fuss');
+
+    argument := FServiceManager.Bridge_GetStruct('com.sun.star.beans.PropertyValue');
+    argument.Name := 'FilterName';
+    argument.Value := OOFilterOdt;
+    document.storeToURL(FileNameToUrl(Result), MakeSequence([argument]));
+  finally
+    document.close(True);
   end;
 end;
 

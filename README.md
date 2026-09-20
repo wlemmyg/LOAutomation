@@ -17,6 +17,11 @@ no type library to import.
 - Fill **bookmarks**, one by one or from a `TStrings` list (`Name=Value`)
 - Fill **tables** by cell name (`A1`, `B3`, …) or from a two-dimensional array, adding missing rows
   automatically
+- **Search and replace** across the whole document — body text, headers, footers and text frames — with
+  optional case sensitivity, whole words and regular expressions
+- **Insert an image** at a bookmark, at its natural size or at a size you give
+- **Read back** what is in a table cell or in a bookmark
+- Save a copy through **any LibreOffice filter** (`.docx`, `.rtf`, `.txt`, …), not just PDF
 - Hand a finished document over to the user, visible and still open
 - No VCL dependency, no dialogs: the library is usable from a service or a console program
 - Errors raise `EOOAutomation` with a plain message: what failed, in which document, and what to do instead.
@@ -80,6 +85,7 @@ shuts LibreOffice down, because it shares the running LibreOffice instance with 
 | `Save` | stores the document under its current name |
 | `SaveAs(FileName)` | stores it and renames it — the document is called that from now on |
 | `SaveCopyAs(FileName)` | writes a copy; the document keeps its own name |
+| `SaveCopyAs(FileName, FilterName)` | the same through a named filter; an unknown filter is rejected before anything is written |
 | `ExportPdf(FileName)` | PDF export (filter `writer_pdf_Export`) |
 | `Print(Options)` | prints and **waits** until LibreOffice has handed the job over |
 | `CloseFile(Save = False)` | closes the document; the object is empty afterwards |
@@ -97,6 +103,11 @@ shuts LibreOffice down, because it shares the running LibreOffice instance with 
 | `WriteToBookmarks(Values)` | `TStrings` with lines `Name=Value` |
 | `GetBookmarkNames(List)` | fills a `TStrings` with all bookmark names |
 | `GetTableNames(List)` | fills a `TStrings` with all table names |
+| `ReplaceAll(Search, Replace)` | replaces throughout the document and **returns the number of replacements** |
+| `ReplaceAll(Search, Replace, Options)` | the same with `TOOSearchOptions` |
+| `ReadBookmark(Name)` | the text a bookmark spans; a bookmark that spans nothing raises (see below) |
+| `InsertImageAtBookmark(Bookmark, FileName)` | inserts the image at its natural size |
+| `InsertImageAtBookmark(Bookmark, FileName, Width, Height)` | … at the given size, in 1/100 mm |
 | `TableByName(Name)` | a borrowed `TOOTable`; an unknown name raises `EOOAutomation` |
 | `FindTable(Name)` | a borrowed `TOOTable`, or `nil` if there is no such table |
 
@@ -106,9 +117,23 @@ shuts LibreOffice down, because it shares the running LibreOffice instance with 
 |---|---|
 | `SetCell(CellName, Value)` | by cell name, e.g. `A1` |
 | `SetCells(Values)` | `TStrings` with lines `A1=Value` |
+| `GetCell(CellName)` | reads one cell back |
+| `ReadAll` | the whole table as a two-dimensional array |
 | `InsertRows(AfterRow, Count)` | 1-based; `0` inserts at the very top |
 | `Fill(Data, StartRow = 1)` | fills from a two-dimensional array and appends missing rows |
 | `Name` | the table's name |
+
+**`TOOSearchOptions`** (a record in `OOTools`; `TOOSearchOptions.Default` is LibreOffice's own default —
+everything off)
+
+| Field | Meaning |
+|---|---|
+| `CaseSensitive` | `False` = `Test` also finds `test` |
+| `WholeWords` | `True` = only whole words match |
+| `RegularExpression` | `True` = the search string is a regular expression |
+
+**Filter names** (constants in `OOTools`, for `SaveCopyAs`): `OOFilterOdt`, `OOFilterDocx`, `OOFilterRtf`,
+`OOFilterText`, `OOFilterPdf`. Any other name LibreOffice knows works too.
 
 **`TOOPrintOptions`** (a record in `OOTools`; `TOOPrintOptions.Default` gives one printer-less copy, collated,
 all pages)
@@ -133,8 +158,17 @@ all pages)
 - **Bookmark names are case-sensitive.** LibreOffice reports an unknown name *without any message text*, so
   the library adds the name and the document to the error itself.
 - **Table pointers are borrowed.** `TableByName` and `FindTable` return objects owned by the `TOOWriter`.
-  After `CloseFile`, `HandOver` or loading another document they are invalid — fetch them again, do not
-  keep them.
+  After `CloseFile`, `HandOver` or loading another document they no longer belong to a document — using one
+  then raises `EOOAutomation` telling you to fetch it again. Do not keep them across those calls.
+- **A bookmark can only be read if it spans text.** Most bookmarks are a position, not a range, and such a
+  bookmark returns nothing — even right after you wrote to it. Since an empty string could not be told apart
+  from an empty field, `ReadBookmark` raises instead. To read a value back, put the bookmark *over* the text
+  in the template.
+- **Zero replacements is not an error.** `ReplaceAll` returns the count and leaves the judgement to you —
+  optional placeholders are normal. Check the result if a hit is required.
+- **An inserted image needs a size.** LibreOffice gives a freshly inserted image 566 × 566 (1/100 mm)
+  regardless of the file. The overload without a size reads the image's natural size and keeps its aspect
+  ratio; images are anchored as a character, so they sit in the text flow.
 - **Paper format and orientation are not print options.** LibreOffice ignores an orientation passed to the
   printer, and a paper format passed there re-formats the *document* (new page breaks, document marked as
   modified). Both therefore come from the page style, where they belong.
@@ -183,6 +217,21 @@ The integration tests are in the DUnitX category `LibreOffice`. They work on cop
 leave LibreOffice as they found it: they close only the documents they opened themselves, and they shut
 LibreOffice down only if it was not already running when the test run started.
 
+### Changes in 0.3.0
+
+- **Search and replace:** `ReplaceAll`, with `TOOSearchOptions` for case, whole words and regular
+  expressions. It covers headers, footers and text frames as well as the body, and returns the number of
+  replacements.
+- **Save through any filter:** `SaveCopyAs(FileName, FilterName)` plus constants for the common ones. An
+  unknown filter is rejected *before* anything is written, with the name in the message — LibreOffice itself
+  would only say `Error Area:Io Class:Parameter Code:26`. `ExportPdf` is now a special case of this.
+- **Images:** `InsertImageAtBookmark`, at the natural size or at a size you give. A missing or unreadable
+  file is reported; LibreOffice alone returns nothing at all in that case.
+- **Reading:** `TOOTable.GetCell`, `TOOTable.ReadAll` and `TOOWriter.ReadBookmark`.
+- **A table that outlives its document says so.** Previously a borrowed pointer became a pointer to nothing
+  once the document was closed, and only this README warned about it.
+- 69 DUnitX tests, green on all three Delphi versions in both platforms.
+
 ### Changes in 0.2.0
 
 The first version dates back to 2005/06, written for Delphi 5 to Turbo Delphi. What changed:
@@ -222,7 +271,7 @@ Late binding to UNO has a few sharp edges that cost time to find again:
 
 ### Status
 
-Version 0.2. The library is being modernised, and the API may still change before 1.0. Only Writer is
+Version 0.3. The library is being modernised, and the API may still change before 1.0. Only Writer is
 supported so far.
 
 ### Background
@@ -252,6 +301,11 @@ kein Import einer Typbibliothek nötig.
 - **Textmarken** füllen, einzeln oder aus einer `TStrings`-Liste (`Name=Wert`)
 - **Tabellen** füllen, über den Zellnamen (`A1`, `B3`, …) oder aus einem zweidimensionalen Array. Fehlende
   Zeilen werden automatisch angehängt.
+- **Suchen und Ersetzen** im ganzen Dokument — Fließtext, Kopf- und Fußzeilen und Textrahmen — wahlweise mit
+  Beachtung der Groß-/Kleinschreibung, nur ganze Wörter oder regulärem Ausdruck
+- **Bild einfügen** an einer Textmarke, in natürlicher Größe oder in einer angegebenen
+- **Zurücklesen**, was in einer Tabellenzelle oder einer Textmarke steht
+- Kopie über **jeden LibreOffice-Filter** speichern (`.docx`, `.rtf`, `.txt`, …), nicht nur PDF
 - Ein fertiges Dokument sichtbar und geöffnet an den Benutzer übergeben
 - Keine VCL-Abhängigkeit, keine Dialoge: auch aus einem Dienst oder einem Konsolenprogramm nutzbar
 - Fehler lösen `EOOAutomation` mit Klartext aus: was scheiterte, in welchem Dokument und welcher Weg
@@ -315,6 +369,7 @@ Bibliothek beendet LibreOffice nie, weil sie sich die laufende LibreOffice-Insta
 | `Save` | speichert unter dem bisherigen Namen |
 | `SaveAs(Datei)` | speichert und benennt um — das Dokument heißt danach so |
 | `SaveCopyAs(Datei)` | schreibt eine Kopie; das Dokument behält seinen Namen |
+| `SaveCopyAs(Datei, Filtername)` | dasselbe über einen benannten Filter; einen unbekannten lehnt sie ab, bevor etwas geschrieben wird |
 | `ExportPdf(Datei)` | PDF-Export (Filter `writer_pdf_Export`) |
 | `Print(Optionen)` | druckt und **wartet**, bis LibreOffice den Auftrag abgegeben hat |
 | `CloseFile(Speichern = False)` | schließt das Dokument; das Objekt ist danach leer |
@@ -332,6 +387,11 @@ Bibliothek beendet LibreOffice nie, weil sie sich die laufende LibreOffice-Insta
 | `WriteToBookmarks(Werte)` | `TStrings` mit Zeilen `Name=Wert` |
 | `GetBookmarkNames(Liste)` | füllt eine `TStrings` mit allen Textmarkennamen |
 | `GetTableNames(Liste)` | füllt eine `TStrings` mit allen Tabellennamen |
+| `ReplaceAll(Suche, Ersatz)` | ersetzt im ganzen Dokument und **liefert die Anzahl der Ersetzungen** |
+| `ReplaceAll(Suche, Ersatz, Optionen)` | dasselbe mit `TOOSearchOptions` |
+| `ReadBookmark(Name)` | der Text, den eine Textmarke umspannt; umspannt sie nichts, bricht sie ab (siehe unten) |
+| `InsertImageAtBookmark(Textmarke, Datei)` | fügt das Bild in seiner natürlichen Größe ein |
+| `InsertImageAtBookmark(Textmarke, Datei, Breite, Höhe)` | … in der angegebenen Größe, in 1/100 mm |
 | `TableByName(Name)` | eine geliehene `TOOTable`; ein unbekannter Name löst `EOOAutomation` aus |
 | `FindTable(Name)` | eine geliehene `TOOTable` oder `nil`, wenn es sie nicht gibt |
 
@@ -341,9 +401,23 @@ Bibliothek beendet LibreOffice nie, weil sie sich die laufende LibreOffice-Insta
 |---|---|
 | `SetCell(Zellname, Wert)` | über den Zellnamen, z. B. `A1` |
 | `SetCells(Werte)` | `TStrings` mit Zeilen `A1=Wert` |
+| `GetCell(Zellname)` | liest eine Zelle zurück |
+| `ReadAll` | die ganze Tabelle als zweidimensionales Array |
 | `InsertRows(NachZeile, Anzahl)` | 1-basiert; `0` fügt ganz oben ein |
 | `Fill(Daten, AbZeile = 1)` | füllt aus einem zweidimensionalen Array und hängt fehlende Zeilen an |
 | `Name` | Name der Tabelle |
+
+**`TOOSearchOptions`** (Record in `OOTools`; `TOOSearchOptions.Default` ist LibreOffices eigene Vorgabe —
+alles aus)
+
+| Feld | Bedeutung |
+|---|---|
+| `CaseSensitive` | `False` = `Test` findet auch `test` |
+| `WholeWords` | `True` = nur ganze Wörter treffen |
+| `RegularExpression` | `True` = der Suchtext ist ein regulärer Ausdruck |
+
+**Filternamen** (Konstanten in `OOTools`, für `SaveCopyAs`): `OOFilterOdt`, `OOFilterDocx`, `OOFilterRtf`,
+`OOFilterText`, `OOFilterPdf`. Jeder andere Name, den LibreOffice kennt, geht ebenfalls.
 
 **`TOOPrintOptions`** (Record in `OOTools`; `TOOPrintOptions.Default` liefert eine Kopie, sortiert, alle
 Seiten, ohne festen Drucker)
@@ -368,8 +442,18 @@ Seiten, ohne festen Drucker)
 - **Textmarkennamen sind case-sensitiv.** LibreOffice meldet einen unbekannten Namen *ohne jeden
   Meldungstext*, deshalb setzt die Bibliothek Name und Dokument selbst in den Fehler.
 - **Tabellenzeiger sind geliehen.** `TableByName` und `FindTable` liefern Objekte, die dem `TOOWriter`
-  gehören. Nach `CloseFile`, `HandOver` oder dem Laden eines anderen Dokuments sind sie ungültig — dann neu
-  holen, nicht aufbewahren.
+  gehören. Nach `CloseFile`, `HandOver` oder dem Laden eines anderen Dokuments gehören sie zu keinem Dokument
+  mehr — wer sie dann benutzt, bekommt ein `EOOAutomation` mit dem Hinweis, sie neu zu holen. Über diese
+  Aufrufe hinweg also nicht aufbewahren.
+- **Eine Textmarke lässt sich nur lesen, wenn sie Text umspannt.** Die meisten Textmarken sind eine Position,
+  kein Bereich, und liefern deshalb nichts — auch unmittelbar nachdem man hineingeschrieben hat. Da ein leerer
+  String von einem leeren Feld nicht zu unterscheiden wäre, bricht `ReadBookmark` stattdessen ab. Wer einen
+  Wert zurücklesen will, legt die Textmarke in der Vorlage *über* den Text.
+- **Null Ersetzungen sind kein Fehler.** `ReplaceAll` liefert die Anzahl und überlässt das Urteil dem
+  Aufrufer — optionale Platzhalter sind alltäglich. Wer einen Treffer braucht, prüft das Ergebnis.
+- **Ein eingefügtes Bild braucht eine Größe.** LibreOffice gibt einem frisch eingefügten Bild 566 × 566
+  (1/100 mm), unabhängig von der Datei. Die Überladung ohne Maße liest die natürliche Größe und hält das
+  Seitenverhältnis; verankert werden Bilder als Zeichen, sie sitzen also im Textfluss.
 - **Papierformat und Ausrichtung sind keine Druckoptionen.** Eine an den Drucker übergebene Ausrichtung
   ignoriert LibreOffice, und ein übergebenes Papierformat formatiert das *Dokument* um (neuer Umbruch,
   Dokument gilt als geändert). Beides kommt deshalb aus der Seitenvorlage, wo es hingehört.
@@ -420,6 +504,22 @@ Die Integrationstests stehen in der DUnitX-Kategorie `LibreOffice`. Sie arbeiten
 hinterlassen LibreOffice so, wie sie es vorgefunden haben: Sie schließen nur die Dokumente, die sie selbst
 geöffnet haben, und beenden LibreOffice nur dann, wenn es zu Beginn des Laufs nicht schon lief.
 
+### Änderungen in 0.3.0
+
+- **Suchen und Ersetzen:** `ReplaceAll`, mit `TOOSearchOptions` für Groß-/Kleinschreibung, ganze Wörter und
+  reguläre Ausdrücke. Es erfasst neben dem Fließtext auch Kopf- und Fußzeilen und Textrahmen und liefert die
+  Anzahl der Ersetzungen.
+- **Speichern über jeden Filter:** `SaveCopyAs(Datei, Filtername)` samt Konstanten für die gebräuchlichen.
+  Einen unbekannten Filter lehnt die Bibliothek ab, *bevor* etwas geschrieben wird, und nennt ihn beim Namen —
+  LibreOffice selbst sagt dazu nur `Error Area:Io Class:Parameter Code:26`. `ExportPdf` ist jetzt ein
+  Sonderfall davon.
+- **Bilder:** `InsertImageAtBookmark`, in natürlicher oder angegebener Größe. Eine fehlende oder unlesbare
+  Datei wird gemeldet; LibreOffice allein liefert in dem Fall kommentarlos gar nichts.
+- **Lesen:** `TOOTable.GetCell`, `TOOTable.ReadAll` und `TOOWriter.ReadBookmark`.
+- **Eine Tabelle, die ihr Dokument überlebt, sagt das selbst.** Bisher wurde ein geliehener Zeiger mit dem
+  Schließen des Dokuments zu einem Zeiger ins Nichts, vor dem nur diese README warnte.
+- 69 DUnitX-Tests, grün in allen drei Delphi-Versionen auf beiden Plattformen.
+
 ### Änderungen in 0.2.0
 
 Die erste Fassung stammt von 2005/06 und war für Delphi 5 bis Turbo Delphi geschrieben. Was sich geändert hat:
@@ -462,7 +562,7 @@ Late Binding an UNO hat ein paar Fallen, die man sonst zweimal sucht:
 
 ### Stand
 
-Version 0.2. Die Bibliothek wird gerade modernisiert, bis 1.0 kann sich die API noch ändern. Bisher wird nur
+Version 0.3. Die Bibliothek wird gerade modernisiert, bis 1.0 kann sich die API noch ändern. Bisher wird nur
 Writer unterstützt.
 
 ### Hintergrund

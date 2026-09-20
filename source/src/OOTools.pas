@@ -7,7 +7,7 @@ interface
 Autor: Wolfgang Lemmermeyer
 Webseite: https://delphi-tutorials.de
 Kontakt: lemmy@delphi-tutorials.de
-Version: 0.2
+Version: 0.3
 Datum: 26.02.2005, überarbeitet 2026
 
 Übergreifende Typen und Hilfsfunktionen, ohne LibreOffice testbar
@@ -37,6 +37,22 @@ type
     class function Default: TOOPrintOptions; static;
   end;
 
+  // Optionen fuer Suchen und Ersetzen. Die Vorgaben sind die von LibreOffice selbst (B27).
+  TOOSearchOptions = record
+    CaseSensitive: Boolean;
+    WholeWords: Boolean;
+    RegularExpression: Boolean;
+    class function Default: TOOSearchOptions; static;
+  end;
+
+const
+  // Gebraeuchliche Filternamen fuer SaveCopyAs; LibreOffice kennt weit mehr (B28)
+  OOFilterOdt = 'writer8';
+  OOFilterDocx = 'MS Word 2007 XML';
+  OOFilterRtf = 'Rich Text Format';
+  OOFilterText = 'Text';
+  OOFilterPdf = 'writer_pdf_Export';
+
 // Laufwerks- oder UNC-Pfad als UTF-8-%-kodierte file-URL; relative Pfade lehnt sie ab (F4)
 function FileNameToUrl(const AFileName: string): string;
 
@@ -47,12 +63,21 @@ type
   // Wie ein Dokument verloren gehen kann (E6)
   TOODocumentLoss = (dlNone, dlOfficeGone, dlDocumentClosed);
 
+  // Fehlerweg eines geliehenen Objekts zurueck zu seinem Besitzer: packt ein und laesst ein verlorenes
+  // Dokument los (E6). TOOTable bekommt ihn vom TOOWriter.
+  TOODocumentErrorFunc = function(const AContext: string; AError: Exception): EOOAutomation of object;
+
 // Sagt ein Fehler, dass das Dokument verloren ist? Dann hilft kein Wiederholen (E6)
 function DocumentLoss(AError: Exception): TOODocumentLoss;
 
 // Packt einen UNO-/OLE-Fehler samt Zusammenhang in EOOAutomation ein (A5); bei verlorenem Dokument mit
 // Klartext statt „RPC-Server nicht verfügbar“ (E6)
-function WrapUnoError(const AContext: string; AError: Exception): EOOAutomation;
+function WrapUnoError(const AContext: string; AError: Exception): EOOAutomation; overload;
+
+// Dieselbe Meldung, aber mit einem bereits ermittelten Befund - fuer Aufrufer, die den Verlust nicht am
+// Fehlertext erkennen, sondern beim Dokument nachgefragt haben (B35, B36)
+function WrapUnoError(const AContext: string; AError: Exception;
+  ALoss: TOODocumentLoss): EOOAutomation; overload;
 
 // Leerer UNO-Verweis: LibreOffice liefert „nicht gefunden“ teils als null statt als Ausnahme (B19)
 function IsNullObject(const AValue: OleVariant): Boolean;
@@ -73,6 +98,15 @@ const
   CUnreserved: set of AnsiChar = ['A'..'Z', 'a'..'z', '0'..'9', '-', '.', '_', '~'];
 
 { ===== TOOPrintOptions ===== }
+
+class function TOOSearchOptions.Default: TOOSearchOptions;
+begin
+  // LibreOffice sucht per Vorgabe ohne Ruecksicht auf Gross-/Kleinschreibung, ohne Wortgrenzen
+  // und ohne regulaere Ausdruecke (B27)
+  Result.CaseSensitive := False;
+  Result.WholeWords := False;
+  Result.RegularExpression := False;
+end;
 
 class function TOOPrintOptions.Default: TOOPrintOptions;
 begin
@@ -212,6 +246,11 @@ begin
 end;
 
 function WrapUnoError(const AContext: string; AError: Exception): EOOAutomation;
+begin
+  Result := WrapUnoError(AContext, AError, DocumentLoss(AError));
+end;
+
+function WrapUnoError(const AContext: string; AError: Exception; ALoss: TOODocumentLoss): EOOAutomation;
 var
   detail: string;
 begin
@@ -222,7 +261,7 @@ begin
     detail := AError.ClassName + ' ohne Meldungstext';
   end;
   // Der technische Text bleibt am Ende stehen, er hilft beim Nachforschen
-  case DocumentLoss(AError) of
+  case ALoss of
     dlOfficeGone:
       Result := EOOAutomation.CreateFmt('%s: LibreOffice ist nicht mehr erreichbar – es wurde beendet oder ist ' +
         'abgestürzt. Das Dokument ist für dieses Objekt verloren; nicht gespeicherte Änderungen bietet ' +

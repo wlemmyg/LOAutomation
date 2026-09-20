@@ -5,7 +5,7 @@
 Autor: Wolfgang Lemmermeyer
 Webseite: https://delphi-tutorials.de
 Kontakt: lemmy@delphi-tutorials.de
-Version: 0.2
+Version: 0.3
 Datum: 26.02.2005, überarbeitet 2026
 
 Elternklasse für den OLE-Zugriff auf LibreOffice
@@ -34,6 +34,9 @@ type
     function ContainerWindow: OleVariant;
     procedure StoreDocument(const AFileName, AAction: string; AAsCopy: Boolean; const AFilterName: string);
     procedure ReleaseDocument;
+    function DocumentResponds: Boolean;
+    function OfficeResponds: Boolean;
+    function DetectLoss(AError: Exception): TOODocumentLoss;
   protected
     FServiceManager: OleVariant;
     FDesktop: OleVariant;
@@ -43,6 +46,7 @@ type
     // Packt einen UNO-Fehler ein und lässt ein verlorenes Dokument los; zum Werfen gedacht (E6)
     function DocumentError(const AContext: string; AError: Exception): EOOAutomation;
     procedure RequireDocument;
+    procedure RequireFilter(const AFilterName: string);
     procedure ApplyPrinter(const AOptions: TOOPrintOptions);
     function PrintArgs(const AOptions: TOOPrintOptions): OleVariant;
     function PdfFilterName: string; virtual; abstract;
@@ -55,7 +59,8 @@ type
     procedure LoadFile(const AFileName: string; AHidden: Boolean = False);
     procedure Save;
     procedure SaveAs(const AFileName: string);
-    procedure SaveCopyAs(const AFileName: string);
+    procedure SaveCopyAs(const AFileName: string); overload;
+    procedure SaveCopyAs(const AFileName, AFilterName: string); overload;
     procedure ExportPdf(const AFileName: string);
     procedure CloseFile(ASave: Boolean = False);
     procedure HandOver;
@@ -231,10 +236,44 @@ begin
   StoreDocument(AFileName, 'Kopie speichern', True, '');
 end;
 
-procedure TOOObject.ExportPdf(const AFileName: string);
+procedure TOOObject.RequireFilter(const AFilterName: string);
+var
+  factory: OleVariant;
+begin
+  if AFilterName = '' then
+  begin
+    raise EOOAutomation.Create('Kein Filtername angegeben. Ohne Filter speichert SaveCopyAs im ' +
+      'Ursprungsformat – dafür gibt es die Überladung mit nur einem Dateinamen.');
+  end;
+  try
+    factory := FServiceManager.createInstance('com.sun.star.document.FilterFactory');
+  except
+    on E: EOleSysError do
+    begin
+      raise WrapUnoError('Filterliste von LibreOffice nicht erreichbar', E);
+    end;
+  end;
+  // Vorher fragen statt auf den Speicherfehler warten: LibreOffice meldet einen unbekannten Filter nur als
+  // "Error Area:Io Class:Parameter Code:26", damit kann kein Aufrufer etwas anfangen (B28)
+  if not Boolean(factory.hasByName(AFilterName)) then
+  begin
+    raise EOOAutomation.CreateFmt('Filter "%s" kennt LibreOffice nicht. Gebräuchlich sind "%s" (ODF Text), ' +
+      '"%s" (Word), "%s" (RTF), "%s" (reiner Text) und "%s" (PDF).',
+      [AFilterName, OOFilterOdt, OOFilterDocx, OOFilterRtf, OOFilterText, OOFilterPdf]);
+  end;
+end;
+
+procedure TOOObject.SaveCopyAs(const AFileName, AFilterName: string);
 begin
   RequireDocument;
-  StoreDocument(AFileName, 'PDF-Export', True, PdfFilterName);
+  RequireFilter(AFilterName);
+  StoreDocument(AFileName, Format('Kopie speichern als "%s"', [AFilterName]), True, AFilterName);
+end;
+
+procedure TOOObject.ExportPdf(const AFileName: string);
+begin
+  // Seit P6.2 nur noch ein benannter Sonderfall des Filter-Exports (Q4)
+  SaveCopyAs(AFileName, PdfFilterName);
 end;
 
 procedure TOOObject.StoreDocument(const AFileName, AAction: string; AAsCopy: Boolean;
@@ -368,14 +407,62 @@ end;
 
 { ===== Helfer ===== }
 
+function TOOObject.DocumentResponds: Boolean;
+begin
+  // getURL ist der verlaessliche Anklopfer: Ein geschlossenes Dokument antwortet darauf nicht mehr.
+  // getImplementationName taugt nicht - das meldet auch danach noch brav 'SwXTextDocument' (B36).
+  try
+    FDocument.getURL;
+    Result := True;
+  except
+    Result := False;
+  end;
+end;
+
+function TOOObject.OfficeResponds: Boolean;
+begin
+  try
+    FDesktop.getImplementationName;
+    Result := True;
+  except
+    Result := False;
+  end;
+end;
+
+function TOOObject.DetectLoss(AError: Exception): TOODocumentLoss;
+begin
+  Result := DocumentLoss(AError);
+  if (Result <> dlNone) or not IsLoaded then
+  begin
+    Exit;
+  end;
+  // Manche UNO-Objekte melden den Verlust nur als nackte RuntimeException, teils ohne Text (B35). Statt
+  // Fehlernamen zu raten wird nachgefragt, wer noch antwortet (B36).
+  if DocumentResponds then
+  begin
+    Exit;
+  end;
+  if OfficeResponds then
+  begin
+    Result := dlDocumentClosed;
+  end
+  else
+  begin
+    Result := dlOfficeGone;
+  end;
+end;
+
 function TOOObject.DocumentError(const AContext: string; AError: Exception): EOOAutomation;
+var
+  loss: TOODocumentLoss;
 begin
   // Ist das Dokument verloren, hilft kein Wiederholen: Der Verweis ist tot, das Objekt gilt danach als leer (E6)
-  if (DocumentLoss(AError) <> dlNone) and IsLoaded then
+  loss := DetectLoss(AError);
+  if (loss <> dlNone) and IsLoaded then
   begin
     ReleaseDocument;
   end;
-  Result := WrapUnoError(AContext, AError);
+  Result := WrapUnoError(AContext, AError, loss);
 end;
 
 function TOOObject.MakePropertyValue(const AName: string; const AValue: OleVariant): OleVariant;

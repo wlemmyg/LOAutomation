@@ -34,6 +34,13 @@ type
     function CellText(const ATable, ACell: string): string;
     function RowCount(const ATable: string): Integer;
     function PrinterSetting(const AName: string): OleVariant;
+    function HeaderString: string;
+    function FooterString: string;
+    function FrameString: string;
+    function GraphicCount: Integer;
+    function GraphicWidth(AIndex: Integer): Integer;
+    function GraphicHeight(AIndex: Integer): Integer;
+    function GraphicAnchor(AIndex: Integer): Integer;
   public
     [SetupFixture]
     procedure SetupFixture;
@@ -162,6 +169,70 @@ type
     [Test]
     [MaxTime(CMaxTime)]
     procedure ClosedDocumentIsReported;
+
+    // I38-I41: Suchen und Ersetzen (B27, B32, Q2)
+    [Test]
+    [MaxTime(CMaxTime)]
+    procedure ReplaceAllReturnsCount;
+    [Test]
+    [MaxTime(CMaxTime)]
+    procedure ReplaceAllWithoutHitsReturnsZero;
+    [Test]
+    [MaxTime(CMaxTime)]
+    procedure ReplaceAllCoversHeaderFooterAndFrame;
+    [Test]
+    [MaxTime(CMaxTime)]
+    procedure ReplaceAllCaseSensitiveFindsFewer;
+
+    // I42-I43: Export ueber einen beliebigen Filter (B28, Q4, Q5)
+    [Test]
+    [MaxTime(CMaxTime)]
+    procedure SaveCopyAsWithFilterWritesDocx;
+    [Test]
+    [MaxTime(CMaxTime)]
+    procedure SaveCopyAsWithUnknownFilterRaises;
+
+    // I44-I47: Bild an einer Textmarke (B29, B30, B33, Q6)
+    [Test]
+    [MaxTime(CMaxTime)]
+    procedure InsertImageUsesNaturalSize;
+    [Test]
+    [MaxTime(CMaxTime)]
+    procedure InsertImageWithExplicitSize;
+    [Test]
+    [MaxTime(CMaxTime)]
+    procedure InsertImageMissingFileRaises;
+    [Test]
+    [MaxTime(CMaxTime)]
+    procedure InsertImageUnknownBookmarkRaises;
+
+    // I48-I52: Lesen statt nur schreiben (B19, B31, Q7)
+    [Test]
+    [MaxTime(CMaxTime)]
+    procedure GetCellReturnsValue;
+    [Test]
+    [MaxTime(CMaxTime)]
+    procedure GetCellUnknownRaises;
+    [Test]
+    [MaxTime(CMaxTime)]
+    procedure ReadAllReturnsGrid;
+    [Test]
+    [MaxTime(CMaxTime)]
+    procedure ReadPointBookmarkRaises;
+    [Test]
+    [MaxTime(CMaxTime)]
+    procedure ReadSpanningBookmarkReturnsText;
+
+    // I53-I54: verlorenes Dokument auf dem Weg ueber eine geliehene Tabelle (Review 2026-09-20, B35)
+    [Test]
+    [MaxTime(CMaxTime)]
+    procedure ClosedDocumentIsReportedFromTableCell;
+    [Test]
+    [MaxTime(CMaxTime)]
+    procedure ClosedDocumentIsReportedFromTableFill;
+    [Test]
+    [MaxTime(CMaxTime)]
+    procedure StaleTableReportsItself;
   end;
 
 implementation
@@ -753,6 +824,294 @@ begin
     end,
     [ExtractFileName(fileName), 'geschlossen']);
   Assert.IsFalse(FWriter.IsLoaded, 'Objekt hält das verlorene Dokument noch');
+end;
+
+{ ===== Helfer fuer die P6-Tests ===== }
+
+function TOOWriterTests.HeaderString: string;
+begin
+  Result := TOOWriterAccess(FWriter).FDocument.getStyleFamilies.getByName('PageStyles')
+    .getByName('Standard').HeaderText.getString;
+end;
+
+function TOOWriterTests.FooterString: string;
+begin
+  Result := TOOWriterAccess(FWriter).FDocument.getStyleFamilies.getByName('PageStyles')
+    .getByName('Standard').FooterText.getString;
+end;
+
+function TOOWriterTests.FrameString: string;
+begin
+  Result := TOOWriterAccess(FWriter).FDocument.getTextFrames.getByIndex(0).getText.getString;
+end;
+
+function TOOWriterTests.GraphicCount: Integer;
+begin
+  Result := TOOWriterAccess(FWriter).FDocument.getGraphicObjects.getCount;
+end;
+
+function TOOWriterTests.GraphicWidth(AIndex: Integer): Integer;
+begin
+  Result := TOOWriterAccess(FWriter).FDocument.getGraphicObjects.getByIndex(AIndex).Width;
+end;
+
+function TOOWriterTests.GraphicHeight(AIndex: Integer): Integer;
+begin
+  Result := TOOWriterAccess(FWriter).FDocument.getGraphicObjects.getByIndex(AIndex).Height;
+end;
+
+function TOOWriterTests.GraphicAnchor(AIndex: Integer): Integer;
+begin
+  Result := TOOWriterAccess(FWriter).FDocument.getGraphicObjects.getByIndex(AIndex).AnchorType;
+end;
+
+{ ===== I38-I41: Suchen und Ersetzen ===== }
+
+procedure TOOWriterTests.ReplaceAllReturnsCount;
+begin
+  FWriter.LoadFile(TTestEnvironment.CreateMarkedDocument('I38_Marken.odt'), True);
+  // MARKE steht in Fliesstext, Kopf, Fuss und Rahmen (B32)
+  Assert.AreEqual(4, FWriter.ReplaceAll('MARKE', 'ERSETZT'), 'Anzahl der Ersetzungen');
+  Assert.IsTrue(ContainsText(DocumentText, 'ERSETZT im Fliesstext'), 'Fliesstext nicht ersetzt');
+end;
+
+procedure TOOWriterTests.ReplaceAllWithoutHitsReturnsZero;
+begin
+  FWriter.LoadFile(TTestEnvironment.CreateMarkedDocument('I39_Marken.odt'), True);
+  // Kein Treffer ist kein Fehler, nur eine 0 (Q2)
+  Assert.AreEqual(0, FWriter.ReplaceAll('GIBTESNICHT', 'X'), 'ohne Treffer muss 0 herauskommen');
+  Assert.IsTrue(ContainsText(DocumentText, 'MARKE im Fliesstext'), 'Dokument wurde doch veraendert');
+end;
+
+procedure TOOWriterTests.ReplaceAllCoversHeaderFooterAndFrame;
+begin
+  FWriter.LoadFile(TTestEnvironment.CreateMarkedDocument('I40_Marken.odt'), True);
+  FWriter.ReplaceAll('MARKE', 'ERSETZT');
+  Assert.AreEqual('ERSETZT im Kopf', HeaderString, 'Kopfzeile');
+  Assert.AreEqual('ERSETZT im Fuss', FooterString, 'Fusszeile');
+  Assert.AreEqual('ERSETZT im Rahmen', FrameString, 'Textrahmen');
+end;
+
+procedure TOOWriterTests.ReplaceAllCaseSensitiveFindsFewer;
+var
+  options: TOOSearchOptions;
+begin
+  FWriter.LoadFile(TTestEnvironment.CreateMarkedDocument('I41_Marken.odt'), True);
+  options := TOOSearchOptions.Default;
+  options.CaseSensitive := True;
+  Assert.AreEqual(0, FWriter.ReplaceAll('marke', 'ERSETZT', options), 'klein geschrieben darf nicht treffen');
+  Assert.AreEqual(4, FWriter.ReplaceAll('MARKE', 'ERSETZT', options), 'gross geschrieben muss treffen');
+end;
+
+{ ===== I42-I43: Export ueber einen beliebigen Filter ===== }
+
+procedure TOOWriterTests.SaveCopyAsWithFilterWritesDocx;
+var
+  source: string;
+  target: string;
+begin
+  source := LoadCopy('test.odt', 'I42_Quelle.odt');
+  target := TTestEnvironment.TempDir + 'I42_Kopie.docx';
+  FWriter.SaveCopyAs(target, OOFilterDocx);
+  Assert.IsTrue(FileExists(target), 'DOCX fehlt');
+  Assert.AreEqual('PK', FileHead(target, 2), 'Datei ist kein ZIP-Container');
+  Assert.AreEqual(source, FWriter.FileName, 'die Kopie hat das Dokument umbenannt');
+end;
+
+procedure TOOWriterTests.SaveCopyAsWithUnknownFilterRaises;
+var
+  target: string;
+begin
+  LoadCopy('test.odt', 'I43_Quelle.odt');
+  target := TTestEnvironment.TempDir + 'I43_Murks.docx';
+  // B28 meldet nur 'Error Area:Io Class:Parameter Code:26' - die Meldung muss den Filter nennen (Q5)
+  AssertRaisesOO(
+    procedure
+    begin
+      FWriter.SaveCopyAs(target, 'Gibt_Es_Nicht_Filter');
+    end,
+    ['Gibt_Es_Nicht_Filter']);
+  Assert.IsFalse(FileExists(target), 'trotz Fehler wurde eine Datei geschrieben');
+end;
+
+{ ===== I44-I47: Bild an einer Textmarke ===== }
+
+procedure TOOWriterTests.InsertImageUsesNaturalSize;
+var
+  logo: string;
+begin
+  logo := TTestEnvironment.CopyTestFile('logo.png', 'I44_logo.png');
+  FWriter.LoadFile(TTestEnvironment.CreateMarkedDocument('I44_Marken.odt'), True);
+  FWriter.InsertImageAtBookmark('Punkt', logo);
+  Assert.AreEqual(1, GraphicCount, 'Bild fehlt');
+  // logo.png ist 40 x 20 Pixel, das Seitenverhaeltnis 2:1 muss stehen (B33)
+  Assert.IsTrue(Abs(GraphicWidth(0) - 2 * GraphicHeight(0)) <= 2,
+    Format('Seitenverhaeltnis verloren: %d x %d', [GraphicWidth(0), GraphicHeight(0)]));
+  // AS_CHARACTER = 1: das Bild sitzt im Textfluss, nicht am Absatz (LibreOffice-Vorgabe waere 0)
+  Assert.AreEqual(1, GraphicAnchor(0), 'Verankerung');
+end;
+
+procedure TOOWriterTests.InsertImageWithExplicitSize;
+var
+  logo: string;
+begin
+  logo := TTestEnvironment.CopyTestFile('logo.png', 'I45_logo.png');
+  FWriter.LoadFile(TTestEnvironment.CreateMarkedDocument('I45_Marken.odt'), True);
+  FWriter.InsertImageAtBookmark('Punkt', logo, 2000, 1000);
+  Assert.AreEqual(2000, GraphicWidth(0), 'Breite in 1/100 mm');
+  Assert.AreEqual(1000, GraphicHeight(0), 'Hoehe in 1/100 mm');
+end;
+
+procedure TOOWriterTests.InsertImageMissingFileRaises;
+var
+  fehlt: string;
+begin
+  FWriter.LoadFile(TTestEnvironment.CreateMarkedDocument('I46_Marken.odt'), True);
+  fehlt := TTestEnvironment.TempDir + 'I46_gibtsnicht.png';
+  // B29: queryGraphic liefert dafuer still null - das darf nicht durchrutschen
+  AssertRaisesOO(
+    procedure
+    begin
+      FWriter.InsertImageAtBookmark('Punkt', fehlt);
+    end,
+    ['I46_gibtsnicht.png']);
+  Assert.AreEqual(0, GraphicCount, 'trotz Fehler wurde ein Bild eingefuegt');
+end;
+
+procedure TOOWriterTests.InsertImageUnknownBookmarkRaises;
+var
+  logo: string;
+begin
+  logo := TTestEnvironment.CopyTestFile('logo.png', 'I47_logo.png');
+  FWriter.LoadFile(TTestEnvironment.CreateMarkedDocument('I47_Marken.odt'), True);
+  AssertRaisesOO(
+    procedure
+    begin
+      FWriter.InsertImageAtBookmark('GibtEsNicht', logo);
+    end,
+    ['GibtEsNicht', 'Punkt']);
+  Assert.AreEqual(0, GraphicCount, 'trotz Fehler wurde ein Bild eingefuegt');
+end;
+
+{ ===== I48-I52: Lesen statt nur schreiben ===== }
+
+procedure TOOWriterTests.GetCellReturnsValue;
+var
+  table: TOOTable;
+begin
+  LoadCopy('Tabellentest.odt', 'I48_Tabelle.odt');
+  table := FWriter.TableByName('Tabelle1');
+  table.SetCell('A1', 'WERT 42');
+  Assert.AreEqual('WERT 42', table.GetCell('A1'), 'Zelle zurueckgelesen');
+end;
+
+procedure TOOWriterTests.GetCellUnknownRaises;
+var
+  table: TOOTable;
+begin
+  LoadCopy('Tabellentest.odt', 'I49_Tabelle.odt');
+  table := FWriter.TableByName('Tabelle1');
+  // B19 gilt auch lesend: getCellByName liefert null statt einer Ausnahme
+  AssertRaisesOO(
+    procedure
+    begin
+      table.GetCell('ZZ99');
+    end,
+    ['ZZ99', 'Tabelle1']);
+end;
+
+procedure TOOWriterTests.ReadAllReturnsGrid;
+var
+  table: TOOTable;
+  grid: TArray<TArray<string>>;
+begin
+  LoadCopy('Tabellentest.odt', 'I50_Tabelle.odt');
+  table := FWriter.TableByName('Tabelle1');
+  table.SetCell('A1', 'oben links');
+  grid := table.ReadAll;
+  // Length liefert unter Win64 ein NativeInt, deshalb der Cast
+  Assert.AreEqual(RowCount('Tabelle1'), Integer(Length(grid)), 'Zeilenzahl');
+  Assert.IsTrue(Length(grid) > 0, 'Tabelle kam leer zurueck');
+  Assert.AreEqual('oben links', grid[0][0], 'erste Zelle');
+end;
+
+procedure TOOWriterTests.ReadPointBookmarkRaises;
+begin
+  FWriter.LoadFile(TTestEnvironment.CreateMarkedDocument('I51_Marken.odt'), True);
+  FWriter.WriteToBookmark('Punkt', 'HALLO');
+  // B31: getAnchor.getString liefert hier '' - auch nach dem Schreiben. Ein leerer String waere
+  // nicht von einem leeren Feld zu unterscheiden, deshalb bricht das Lesen laut ab (Q7).
+  AssertRaisesOO(
+    procedure
+    begin
+      FWriter.ReadBookmark('Punkt');
+    end,
+    ['Punkt']);
+end;
+
+procedure TOOWriterTests.ReadSpanningBookmarkReturnsText;
+begin
+  FWriter.LoadFile(TTestEnvironment.CreateMarkedDocument('I52_Marken.odt'), True);
+  Assert.AreEqual('SPANNE', FWriter.ReadBookmark('Spanne'), 'umspannende Textmarke');
+end;
+
+{ ===== I53-I54: verlorenes Dokument ueber eine geliehene Tabelle ===== }
+
+procedure TOOWriterTests.ClosedDocumentIsReportedFromTableCell;
+var
+  table: TOOTable;
+begin
+  LoadCopy('Tabellentest.odt', 'I53_Verloren.odt');
+  table := FWriter.TableByName('Tabelle1');
+  // Hinter dem Ruecken des Objekts schliessen - wie ein Benutzer, der das Fenster zumacht
+  TOOWriterAccess(FWriter).FDocument.close(True);
+  AssertRaisesOO(
+    procedure
+    begin
+      table.SetCell('A1', 'x');
+    end,
+    ['Tabelle1', 'geschlossen']);
+  Assert.IsFalse(FWriter.IsLoaded, 'Objekt haelt das verlorene Dokument noch');
+end;
+
+procedure TOOWriterTests.ClosedDocumentIsReportedFromTableFill;
+var
+  table: TOOTable;
+begin
+  LoadCopy('Tabellentest.odt', 'I54_Verloren.odt');
+  table := FWriter.TableByName('Tabelle1');
+  TOOWriterAccess(FWriter).FDocument.close(True);
+  // Fill ruft RowCount vor seinem try-Block; frueher kam hier ein roher EOleSysError durch
+  AssertRaisesOO(
+    procedure
+    begin
+      table.Fill([['x']]);
+    end,
+    ['Tabelle1', 'geschlossen']);
+  Assert.IsFalse(FWriter.IsLoaded, 'Objekt haelt das verlorene Dokument noch');
+end;
+
+procedure TOOWriterTests.StaleTableReportsItself;
+var
+  table: TOOTable;
+begin
+  LoadCopy('Tabellentest.odt', 'I55_Veraltet.odt');
+  table := FWriter.TableByName('Tabelle1');
+  FWriter.CloseFile(False);
+  // Der Zeiger bleibt gueltig, das Objekt lebt bis zum naechsten Laden - es muss jetzt selbst sagen,
+  // dass sein Dokument weg ist, statt mit einem toten UNO-Objekt zu reden
+  AssertRaisesOO(
+    procedure
+    begin
+      table.SetCell('A1', 'x');
+    end,
+    ['Tabelle1', 'nicht mehr geladen']);
+  AssertRaisesOO(
+    procedure
+    begin
+      table.Fill([['x']]);
+    end,
+    ['Tabelle1', 'nicht mehr geladen']);
 end;
 
 initialization

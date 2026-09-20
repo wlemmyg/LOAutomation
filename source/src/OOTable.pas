@@ -3,7 +3,7 @@
 Autor: Wolfgang Lemmermeyer
 Webseite: https://delphi-tutorials.de
 Kontakt: lemmy@delphi-tutorials.de
-Version: 0.2
+Version: 0.3
 Datum: 12.11.2006, überarbeitet 2026
 
 Hilfsklasse für den Tabellenzugriff
@@ -20,7 +20,9 @@ unit OOTable;
 interface
 
 uses
-  System.Classes;
+  System.Classes,
+  System.SysUtils,
+  OOTools;
 
 type
   // Eine Texttabelle des Dokuments. Das Objekt gehört dem TOOWriter (Aufrufer bekommen es nur geliehen) und
@@ -29,11 +31,20 @@ type
   strict private
     FTable: OleVariant;
     FName: string;
+    FOnError: TOODocumentErrorFunc;  // Fehlerweg zum Besitzer (E6); geliehen, nicht freizugeben
+    FValid: Boolean;
+    function Error(const AContext: string; AError: Exception): EOOAutomation;
+    procedure RequireValid;
     function CellByName(const ACellName: string): OleVariant;
     function RowCount: Integer;
     function ColumnCount: Integer;
   public
-    constructor Create(const ATable: OleVariant);
+    constructor Create(const ATable: OleVariant; const AOnError: TOODocumentErrorFunc);
+    function GetCell(const ACellName: string): string;
+    function ReadAll: TArray<TArray<string>>;
+    // Sagt der Tabelle, dass ihr Dokument nicht mehr offen ist. Der Besitzer ruft das beim Schliessen;
+    // freigegeben wird die Tabelle erst spaeter (siehe TOOWriter.AfterCloseFile).
+    procedure Invalidate;
     procedure SetCell(const ACellName, AValue: string);
     procedure SetCells(AValues: TStrings);
     procedure InsertRows(AAfterRow, ACount: Integer);
@@ -44,32 +55,109 @@ type
 implementation
 
 uses
-  System.SysUtils,
-  System.Win.ComObj,
-  OOTools;
+  System.Variants,
+  System.Win.ComObj;
 
 { ===== Lebenszyklus ===== }
 
-constructor TOOTable.Create(const ATable: OleVariant);
+constructor TOOTable.Create(const ATable: OleVariant; const AOnError: TOODocumentErrorFunc);
 begin
   inherited Create;
   FTable := ATable;
+  FOnError := AOnError;
+  FValid := True;
   FName := ATable.getName;
 end;
 
+procedure TOOTable.Invalidate;
+begin
+  FValid := False;
+  FTable := Unassigned;
+end;
+
+procedure TOOTable.RequireValid;
+begin
+  // Ohne diesen Waechter redete die Tabelle stillschweigend mit einem toten UNO-Objekt und der Aufrufer
+  // bekaeme einen COM-Fehler statt der Auskunft, was wirklich los ist
+  if not FValid then
+  begin
+    raise EOOAutomation.CreateFmt('Tabelle "%s" gehört zu einem Dokument, das nicht mehr geladen ist. ' +
+      'Weiter: das Dokument neu laden und die Tabelle erneut über TableByName holen.', [FName]);
+  end;
+end;
+
+function TOOTable.Error(const AContext: string; AError: Exception): EOOAutomation;
+begin
+  // ACHTUNG: Der Besitzer laesst bei verlorenem Dokument los und gibt dabei diese Tabelle frei. Nach dem
+  // Aufruf darf nichts mehr auf Felder zugreifen - deshalb ueberall nur "raise Error(...)" als letzte Tat.
+  if Assigned(FOnError) then
+  begin
+    Result := FOnError(AContext, AError);
+  end
+  else
+  begin
+    Result := WrapUnoError(AContext, AError);
+  end;
+end;
+
 { ===== Zellen ===== }
+
+function TOOTable.GetCell(const ACellName: string): string;
+var
+  cell: OleVariant;
+begin
+  RequireValid;
+  cell := CellByName(ACellName);
+  try
+    Result := cell.getString;
+  except
+    on E: EOleSysError do
+    begin
+      raise Error(Format('Zelle "%s" in Tabelle "%s" nicht lesbar', [ACellName, FName]), E);
+    end;
+  end;
+end;
+
+function TOOTable.ReadAll: TArray<TArray<string>>;
+var
+  rows: Integer;
+  columns: Integer;
+  idxRow: Integer;
+  idxCol: Integer;
+begin
+  RequireValid;
+  rows := RowCount;
+  columns := ColumnCount;
+  SetLength(Result, rows);
+  try
+    for idxRow := 0 to rows - 1 do
+    begin
+      SetLength(Result[idxRow], columns);
+      for idxCol := 0 to columns - 1 do
+      begin
+        Result[idxRow][idxCol] := FTable.getCellByPosition(idxCol, idxRow).getString;
+      end;
+    end;
+  except
+    on E: EOleSysError do
+    begin
+      raise Error(Format('Tabelle "%s" nicht lesbar', [FName]), E);
+    end;
+  end;
+end;
 
 procedure TOOTable.SetCell(const ACellName, AValue: string);
 var
   cell: OleVariant;
 begin
+  RequireValid;
   cell := CellByName(ACellName);
   try
     cell.setString(AValue);
   except
     on E: EOleSysError do
     begin
-      raise WrapUnoError(Format('Zelle "%s" in Tabelle "%s" nicht beschreibbar', [ACellName, FName]), E);
+      raise Error(Format('Zelle "%s" in Tabelle "%s" nicht beschreibbar', [ACellName, FName]), E);
     end;
   end;
 end;
@@ -80,6 +168,7 @@ var
   cellName: string;
   idx: Integer;
 begin
+  RequireValid;
   // Erst alle Zellen auflösen, dann schreiben: eine falsche Zelle hinterlässt keine halb gefüllte Tabelle
   SetLength(cells, AValues.Count);
   for idx := 0 to AValues.Count - 1 do
@@ -100,7 +189,7 @@ begin
   except
     on E: EOleSysError do
     begin
-      raise WrapUnoError(Format('Zellen in Tabelle "%s" nicht beschreibbar', [FName]), E);
+      raise Error(Format('Zellen in Tabelle "%s" nicht beschreibbar', [FName]), E);
     end;
   end;
 end;
@@ -112,7 +201,7 @@ begin
   except
     on E: EOleSysError do
     begin
-      raise WrapUnoError(Format('Zelle "%s" in Tabelle "%s" nicht erreichbar', [ACellName, FName]), E);
+      raise Error(Format('Zelle "%s" in Tabelle "%s" nicht erreichbar', [ACellName, FName]), E);
     end;
   end;
   // Eine unbekannte Zelle kommt als null zurück, nicht als Ausnahme (B19)
@@ -128,6 +217,7 @@ procedure TOOTable.InsertRows(AAfterRow, ACount: Integer);
 var
   rows: Integer;
 begin
+  RequireValid;
   rows := RowCount;
   if (ACount < 1) or (AAfterRow < 0) or (AAfterRow > rows) then
   begin
@@ -141,7 +231,7 @@ begin
   except
     on E: EOleSysError do
     begin
-      raise WrapUnoError(Format('Zeilen in Tabelle "%s" nicht einfügbar', [FName]), E);
+      raise Error(Format('Zeilen in Tabelle "%s" nicht einfügbar', [FName]), E);
     end;
   end;
 end;
@@ -154,6 +244,7 @@ var
   idxRow: Integer;
   idxCol: Integer;
 begin
+  RequireValid;
   rows := RowCount;
   columns := ColumnCount;
   if (AStartRow < 1) or (AStartRow > rows + 1) then
@@ -187,19 +278,35 @@ begin
   except
     on E: EOleSysError do
     begin
-      raise WrapUnoError(Format('Tabelle "%s" nicht befüllbar', [FName]), E);
+      raise Error(Format('Tabelle "%s" nicht befüllbar', [FName]), E);
     end;
   end;
 end;
 
 function TOOTable.RowCount: Integer;
 begin
-  Result := FTable.getRows.getCount;
+  // Ungeschuetzt liess das einen rohen EOleSysError an der Bibliothek vorbei - und zwar aus InsertRows und
+  // Fill heraus, die RowCount vor ihrem eigenen try aufrufen (Review 2026-09-20)
+  try
+    Result := FTable.getRows.getCount;
+  except
+    on E: EOleSysError do
+    begin
+      raise Error(Format('Zeilenzahl von Tabelle "%s" nicht lesbar', [FName]), E);
+    end;
+  end;
 end;
 
 function TOOTable.ColumnCount: Integer;
 begin
-  Result := FTable.getColumns.getCount;
+  try
+    Result := FTable.getColumns.getCount;
+  except
+    on E: EOleSysError do
+    begin
+      raise Error(Format('Spaltenzahl von Tabelle "%s" nicht lesbar', [FName]), E);
+    end;
+  end;
 end;
 
 end.

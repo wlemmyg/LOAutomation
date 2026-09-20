@@ -1,10 +1,3 @@
-# Claude Code (persönlich/lokal)
-# Projekt-Memory liegt zentral & versioniert im Hub-Repo (E:\Claude\.claude\memory) — NICHT hier
-# (branch-unabhängig). Lokales bleibt lokal:
-.claude/settings.local.json
-.claude/memory/
-CLAUDE.local.md
-
 # Delphi-Build-Output (regenerierbar)
 *.dcu
 *.exe
