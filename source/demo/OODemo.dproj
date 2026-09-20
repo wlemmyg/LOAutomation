@@ -71,7 +71,7 @@
             <MainSource>MainSource</MainSource>
         </DelphiCompile>
         <DCCReference Include="UMain.pas">
-            <Form>Form1</Form>
+            <Form>MainForm</Form>
         </DCCReference>
         <DCCReference Include="..\src\OOObject.pas"/>
         <DCCReference Include="..\src\OOTools.pas"/>

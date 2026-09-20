@@ -51,7 +51,7 @@ begin
       begin
         System.ExitCode := EXIT_ERRORS;
       end;
-      // Warten nur bei Aufruf mit --exit:pause; Build-Skripte und Claude laufen ohne Tastendruck durch
+      // Warten nur bei Aufruf mit --exit:pause; Build-Skripte laufen ohne Tastendruck durch
       if TDUnitX.Options.ExitBehavior = TDUnitXExitBehavior.Pause then
       begin
         System.Write('Fertig – <Enter> beendet.');

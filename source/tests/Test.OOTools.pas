@@ -18,10 +18,6 @@ type
   [TestFixture]
   TOOToolsTests = class
   public
-    // Der Ordinalwert geht per OLE unverändert als com.sun.star.view.PaperFormat an LibreOffice (A11)
-    [Test]
-    procedure PaperFormatOrdinalsMatchUno;
-
     // U1: Normalform file:///C:/… (T1), ungeschützte Zeichen bleiben, / gilt wie \ (T2)
     [Test]
     procedure DrivePathKeepsColon;
@@ -49,34 +45,25 @@ type
     [Test]
     procedure EmptyPathRaises;
 
-    // U10–U11: Druckvorgaben (E2, E3) und Druckerprüfung, ohne LibreOffice (Plan 7.2)
+    // U10–U11: Druckvorgaben (E3) und Druckerprüfung, ohne LibreOffice (Plan 7.2)
     [Test]
     procedure PrintOptionsDefault;
     [Test]
     procedure PrinterExistsKnowsDefaultPrinter;
+
+    // U12–U13: Klartext, wenn LibreOffice wegbricht (E6)
+    [Test]
+    procedure LostConnectionIsExplained;
+    [Test]
+    procedure OtherErrorsKeepTheirText;
   end;
 
 implementation
 
 uses
+  System.Win.ComObj,
   OOTools,
   Test.Support;
-
-{ ===== Papierformat ===== }
-
-procedure TOOToolsTests.PaperFormatOrdinalsMatchUno;
-begin
-  // Reihenfolge laut IDL: A3, A4, A5, B4, B5, LETTER, LEGAL, TABLOID, USER
-  Assert.AreEqual(0, Ord(pfA3), 'A3');
-  Assert.AreEqual(1, Ord(pfA4), 'A4');
-  Assert.AreEqual(2, Ord(pfA5), 'A5');
-  Assert.AreEqual(3, Ord(pfB4), 'B4');
-  Assert.AreEqual(4, Ord(pfB5), 'B5');
-  Assert.AreEqual(5, Ord(pfLetter), 'LETTER');
-  Assert.AreEqual(6, Ord(pfLegal), 'LEGAL');
-  Assert.AreEqual(7, Ord(pfTabloid), 'TABLOID');
-  Assert.AreEqual(8, Ord(pfUser), 'USER');
-end;
 
 { ===== FileNameToUrl ===== }
 
@@ -151,7 +138,6 @@ begin
   Assert.AreEqual(1, options.Copies, 'Copies');
   Assert.IsTrue(options.Collate, 'Collate (E3)');
   Assert.AreEqual('', options.Pages, 'Pages');
-  Assert.IsFalse(options.OverridePaper, 'OverridePaper (E2)');
 end;
 
 procedure TOOToolsTests.PrinterExistsKnowsDefaultPrinter;
@@ -159,6 +145,51 @@ begin
   // Der Standarddrucker kommt aus GetDefaultPrinter, PrinterExists zählt über EnumPrinters auf
   Assert.IsTrue(PrinterExists(DefaultPrinterName), 'Standarddrucker nicht gefunden');
   Assert.IsFalse(PrinterExists('Gibt es nicht 4711'), 'erfundener Drucker gefunden');
+end;
+
+{ ===== Fehlermeldungen ===== }
+
+procedure TOOToolsTests.LostConnectionIsExplained;
+var
+  error: EOleSysError;
+  wrapped: EOOAutomation;
+begin
+  // „Der RPC-Server ist nicht verfügbar“ sagt dem Leser nichts; die Meldung muss den Grund und den Weg nennen
+  error := EOleSysError.Create('Der RPC-Server ist nicht verfügbar', HRESULT($800706BA), 0);
+  try
+    wrapped := WrapUnoError('Speichern von "C:\Temp\Brief.odt" fehlgeschlagen', error);
+    try
+      Assert.Contains(wrapped.Message, 'Speichern von "C:\Temp\Brief.odt" fehlgeschlagen', 'Zusammenhang fehlt');
+      Assert.Contains(wrapped.Message, 'nicht mehr erreichbar', 'Grund fehlt');
+      Assert.Contains(wrapped.Message, 'neu laden', 'Weg fehlt');
+      Assert.Contains(wrapped.Message, 'RPC-Server', 'technischer Text fehlt');
+    finally
+      wrapped.Free;
+    end;
+  finally
+    error.Free;
+  end;
+end;
+
+procedure TOOToolsTests.OtherErrorsKeepTheirText;
+var
+  error: EOleSysError;
+  wrapped: EOOAutomation;
+begin
+  // Ein gewöhnlicher UNO-Fehler wird nur eingepackt, nicht umgedeutet
+  error := EOleSysError.Create('Typenkonflikt', HRESULT($80020005), 0);
+  try
+    wrapped := WrapUnoError('Schließen von "x.odt" fehlgeschlagen', error);
+    try
+      Assert.Contains(wrapped.Message, 'Schließen von "x.odt" fehlgeschlagen');
+      Assert.Contains(wrapped.Message, 'Typenkonflikt');
+      Assert.DoesNotContain(wrapped.Message, 'nicht mehr erreichbar');
+    finally
+      wrapped.Free;
+    end;
+  finally
+    error.Free;
+  end;
 end;
 
 initialization

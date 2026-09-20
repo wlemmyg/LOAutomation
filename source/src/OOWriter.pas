@@ -128,7 +128,7 @@ begin
   except
     on E: EOleSysError do
     begin
-      raise WrapUnoError(Format('Textmarke "%s" in "%s" nicht beschreibbar', [AName, FileName]), E);
+      raise DocumentError(Format('Textmarke "%s" in "%s" nicht beschreibbar', [AName, FileName]), E);
     end;
   end;
 end;
@@ -194,7 +194,7 @@ begin
   except
     on E: EOleSysError do
     begin
-      raise WrapUnoError(Format('Textmarken von "%s" nicht lesbar', [FileName]), E);
+      raise DocumentError(Format('Textmarken von "%s" nicht lesbar', [FileName]), E);
     end;
   end;
 end;

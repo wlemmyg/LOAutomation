@@ -1,105 +1,343 @@
-﻿object Form1: TForm1
-  Left = 305
-  Top = 186
-  Caption = 'Form1'
-  ClientHeight = 348
-  ClientWidth = 535
+﻿object MainForm: TMainForm
+  Left = 0
+  Top = 0
+  Caption = 'ooAutomation '#8211' Demo'
+  ClientHeight = 600
+  ClientWidth = 800
   Color = clBtnFace
   Font.Charset = DEFAULT_CHARSET
   Font.Color = clWindowText
-  Font.Height = -11
-  Font.Name = 'Tahoma'
+  Font.Height = -12
+  Font.Name = 'Segoe UI'
   Font.Style = []
-  OldCreateOrder = False
   Position = poScreenCenter
+  OnClose = FormClose
   OnCreate = FormCreate
-  OnDestroy = FormDestroy
   PixelsPerInch = 96
-  TextHeight = 13
-  object ButtonOpen: TButton
-    Left = 40
-    Top = 24
-    Width = 141
-    Height = 25
-    Caption = 'Dokument '#246'ffnen'
+  TextHeight = 15
+  object lblFile: TLabel
+    Left = 8
+    Top = 212
+    Width = 784
+    Height = 15
+    AutoSize = False
+    Caption = '(kein Dokument geladen)'
+    EllipsisPosition = epPathEllipsis
+  end
+  object grpDocument: TGroupBox
+    Left = 8
+    Top = 8
+    Width = 384
+    Height = 196
+    Caption = 'Dokument'
     TabOrder = 0
-    OnClick = ButtonOpenClick
+    object btnOpen: TButton
+      Left = 16
+      Top = 24
+      Width = 160
+      Height = 25
+      Caption = #214'ffnen '#8230
+      TabOrder = 0
+      OnClick = btnOpenClick
+    end
+    object chkHidden: TCheckBox
+      Left = 192
+      Top = 28
+      Width = 176
+      Height = 17
+      Caption = 'versteckt laden'
+      TabOrder = 1
+    end
+    object btnClose: TButton
+      Left = 16
+      Top = 56
+      Width = 160
+      Height = 25
+      Caption = 'Schlie'#223'en'
+      TabOrder = 2
+      OnClick = btnCloseClick
+    end
+    object chkSaveOnClose: TCheckBox
+      Left = 192
+      Top = 60
+      Width = 176
+      Height = 17
+      Caption = 'dabei speichern'
+      TabOrder = 3
+    end
+    object btnSave: TButton
+      Left = 16
+      Top = 88
+      Width = 160
+      Height = 25
+      Caption = 'Speichern'
+      TabOrder = 4
+      OnClick = btnSaveClick
+    end
+    object btnSaveAs: TButton
+      Left = 192
+      Top = 88
+      Width = 176
+      Height = 25
+      Caption = 'Speichern unter '#8230
+      TabOrder = 5
+      OnClick = btnSaveAsClick
+    end
+    object btnSaveCopy: TButton
+      Left = 16
+      Top = 120
+      Width = 160
+      Height = 25
+      Caption = 'Kopie speichern unter '#8230
+      TabOrder = 6
+      OnClick = btnSaveCopyClick
+    end
+    object btnExportPdf: TButton
+      Left = 192
+      Top = 120
+      Width = 176
+      Height = 25
+      Caption = 'Als PDF exportieren '#8230
+      TabOrder = 7
+      OnClick = btnExportPdfClick
+    end
+    object btnHandOver: TButton
+      Left = 16
+      Top = 152
+      Width = 160
+      Height = 25
+      Caption = 'An Benutzer '#252'bergeben'
+      TabOrder = 8
+      OnClick = btnHandOverClick
+    end
+    object chkVisible: TCheckBox
+      Left = 192
+      Top = 156
+      Width = 176
+      Height = 17
+      Caption = 'sichtbar'
+      TabOrder = 9
+      OnClick = chkVisibleClick
+    end
   end
-  object Button2: TButton
-    Left = 40
-    Top = 136
-    Width = 141
-    Height = 25
-    Caption = 'Dokument Drucken'
+  object grpBookmarks: TGroupBox
+    Left = 400
+    Top = 8
+    Width = 392
+    Height = 196
+    Caption = 'Textmarken'
     TabOrder = 1
-    OnClick = Button2Click
+    object vleBookmarks: TValueListEditor
+      Left = 16
+      Top = 24
+      Width = 360
+      Height = 128
+      KeyOptions = [keyEdit, keyAdd, keyDelete]
+      TabOrder = 0
+      TitleCaptions.Strings = (
+        'Textmarke'
+        'Wert')
+      ColWidths = (
+        150
+        204)
+    end
+    object btnWriteBookmarks: TButton
+      Left = 16
+      Top = 160
+      Width = 200
+      Height = 25
+      Caption = 'In Textmarken schreiben'
+      TabOrder = 1
+      OnClick = btnWriteBookmarksClick
+    end
   end
-  object ComboBox1: TComboBox
-    Left = 196
-    Top = 140
-    Width = 93
-    Height = 21
-    Style = csDropDownList
-    ItemHeight = 13
-    ItemIndex = 1
+  object grpTables: TGroupBox
+    Left = 8
+    Top = 236
+    Width = 384
+    Height = 236
+    Caption = 'Tabellen'
     TabOrder = 2
-    Text = 'A4'
-    Items.Strings = (
-      'A3'
-      'A4'
-      'A5'
-      'B4'
-      'B5'
-      'LETTER'
-      'LEGAL'
-      'TABLOID')
+    object lblTable: TLabel
+      Left = 16
+      Top = 28
+      Width = 45
+      Height = 15
+      Caption = 'Tabelle:'
+    end
+    object lblStartRow: TLabel
+      Left = 16
+      Top = 178
+      Width = 45
+      Height = 15
+      Caption = 'ab Zeile'
+    end
+    object lblAfterRow: TLabel
+      Left = 16
+      Top = 206
+      Width = 56
+      Height = 15
+      Caption = 'nach Zeile'
+    end
+    object lblRowCount: TLabel
+      Left = 136
+      Top = 206
+      Width = 40
+      Height = 15
+      Caption = 'Anzahl'
+    end
+    object cboTables: TComboBox
+      Left = 80
+      Top = 24
+      Width = 160
+      Height = 23
+      Style = csDropDownList
+      TabOrder = 0
+    end
+    object grdData: TStringGrid
+      Left = 16
+      Top = 56
+      Width = 352
+      Height = 110
+      ColCount = 4
+      DefaultColWidth = 84
+      DefaultRowHeight = 20
+      FixedCols = 0
+      RowCount = 5
+      FixedRows = 0
+      Options = [goFixedVertLine, goFixedHorzLine, goVertLine, goHorzLine, goRangeSelect, goEditing]
+      TabOrder = 1
+    end
+    object spnStartRow: TSpinEdit
+      Left = 80
+      Top = 174
+      Width = 56
+      Height = 24
+      MaxValue = 999
+      MinValue = 1
+      TabOrder = 2
+      Value = 1
+    end
+    object btnFill: TButton
+      Left = 144
+      Top = 173
+      Width = 224
+      Height = 25
+      Caption = 'Tabelle f'#252'llen'
+      TabOrder = 3
+      OnClick = btnFillClick
+    end
+    object spnAfterRow: TSpinEdit
+      Left = 80
+      Top = 202
+      Width = 48
+      Height = 24
+      MaxValue = 999
+      MinValue = 0
+      TabOrder = 4
+      Value = 1
+    end
+    object spnRowCount: TSpinEdit
+      Left = 184
+      Top = 202
+      Width = 48
+      Height = 24
+      MaxValue = 99
+      MinValue = 1
+      TabOrder = 5
+      Value = 1
+    end
+    object btnInsertRows: TButton
+      Left = 240
+      Top = 201
+      Width = 128
+      Height = 25
+      Caption = 'Zeilen einf'#252'gen'
+      TabOrder = 6
+      OnClick = btnInsertRowsClick
+    end
   end
-  object ButtonClose: TButton
-    Left = 40
-    Top = 56
-    Width = 141
-    Height = 25
-    Caption = 'Dokument Schlie'#223'en'
+  object grpPrint: TGroupBox
+    Left = 400
+    Top = 236
+    Width = 392
+    Height = 236
+    Caption = 'Drucken'
     TabOrder = 3
-    OnClick = ButtonCloseClick
+    object lblPages: TLabel
+      Left = 16
+      Top = 28
+      Width = 38
+      Height = 15
+      Caption = 'Seiten:'
+    end
+    object lblPrintHint: TLabel
+      Left = 16
+      Top = 100
+      Width = 360
+      Height = 64
+      AutoSize = False
+      Caption =
+        'Drucker, Kopien und Sortierung kommen aus dem Druckdialog, die S' +
+        'eiten aus dem Feld oder dem Dialog. Papierformat und Ausrichtung' +
+        ' bestimmt die Seitenvorlage des Dokuments.'
+      WordWrap = True
+    end
+    object edtPages: TEdit
+      Left = 72
+      Top = 24
+      Width = 160
+      Height = 23
+      TabOrder = 0
+      TextHint = 'leer = aus dem Druckdialog'
+    end
+    object btnPrint: TButton
+      Left = 16
+      Top = 60
+      Width = 200
+      Height = 25
+      Caption = 'Drucken '#8230
+      TabOrder = 1
+      OnClick = btnPrintClick
+    end
   end
-  object Button4: TButton
-    Left = 40
-    Top = 96
-    Width = 141
-    Height = 25
-    Caption = 'Dokument Speichern'
+  object memLog: TMemo
+    Left = 8
+    Top = 480
+    Width = 784
+    Height = 112
+    Anchors = [akLeft, akTop, akRight, akBottom]
+    ReadOnly = True
+    ScrollBars = ssVertical
     TabOrder = 4
-    OnClick = Button4Click
   end
-  object Button5: TButton
-    Left = 40
-    Top = 172
-    Width = 141
-    Height = 25
-    Caption = 'Daten'#252'bergabe'
-    TabOrder = 5
-    OnClick = Button5Click
+  object dlgOpen: TOpenDialog
+    Filter =
+      'Writer-Dokumente (*.odt;*.ott;*.doc;*.docx)|*.odt;*.ott;*.doc;*.d' +
+      'ocx|Alle Dateien (*.*)|*.*'
+    Options = [ofHideReadOnly, ofFileMustExist, ofEnableSizing]
+    Left = 704
+    Top = 488
   end
-  object Button_TableTest: TButton
-    Left = 40
-    Top = 232
-    Width = 141
-    Height = 25
-    Caption = 'Tabellentest'
-    TabOrder = 6
-    OnClick = Button_TableTestClick
+  object dlgSave: TSaveDialog
+    DefaultExt = 'odt'
+    Filter = 'Writer-Dokument (*.odt)|*.odt|Alle Dateien (*.*)|*.*'
+    Options = [ofOverwritePrompt, ofHideReadOnly, ofEnableSizing]
+    Left = 704
+    Top = 536
   end
-  object OpenDialog1: TOpenDialog
-    Left = 360
-    Top = 28
+  object dlgSavePdf: TSaveDialog
+    DefaultExt = 'pdf'
+    Filter = 'PDF (*.pdf)|*.pdf'
+    Options = [ofOverwritePrompt, ofHideReadOnly, ofEnableSizing]
+    Left = 744
+    Top = 536
   end
-  object SaveDialog1: TSaveDialog
-    Left = 396
-    Top = 32
-  end
-  object PrintDialog1: TPrintDialog
-    Left = 440
-    Top = 28
+  object dlgPrint: TPrintDialog
+    MaxPage = 9999
+    MinPage = 1
+    Options = [poPageNums]
+    Left = 744
+    Top = 488
   end
 end

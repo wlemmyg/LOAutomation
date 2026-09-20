@@ -144,22 +144,24 @@ type
     [MaxTime(CMaxTime)]
     procedure VisibleFollowsContainerWindow;
 
-    // I31–I35: Drucker und Druckargumente
+    // I31, I34, I35: Drucker und Druckargumente (I32/I33 fielen mit der Papier-Vorgabe weg, E5)
     [Test]
     [MaxTime(CMaxTime)]
     procedure UnknownPrinterRaises;
-    [Test]
-    [MaxTime(CMaxTime)]
-    procedure PaperStaysWithoutOverride;
-    [Test]
-    [MaxTime(CMaxTime)]
-    procedure OverridePaperSetsFormat;
     [Test]
     [MaxTime(CMaxTime)]
     procedure PrintArgsAreSeparateAndTyped;
     [Test]
     [MaxTime(CMaxTime)]
     procedure ZeroCopiesRaises;
+    // I36: Druckeinstellungen verändern das Dokument nicht (B26, E5)
+    [Test]
+    [MaxTime(CMaxTime)]
+    procedure PrintSettingsLeaveDocumentUntouched;
+    // I37: in LibreOffice geschlossenes Dokument – Klartext, und das Objekt lässt es los (E6)
+    [Test]
+    [MaxTime(CMaxTime)]
+    procedure ClosedDocumentIsReported;
   end;
 
 implementation
@@ -449,7 +451,7 @@ begin
   LoadCopy('Tabellentest.odt', 'I28_Zeilen.odt');
   table := FWriter.TableByName('Tabelle1');  // geliehen (Besitz: FWriter); 3 Zeilen
   table.SetCell('A2', 'Zwei');
-  // Wie CORA heute mit InsertByIndex(1, n): Platz nach der Kopfzeile
+  // Wie älterer Reportcode: InsertByIndex(1, n) lässt Platz nach der Kopfzeile
   table.InsertRows(1, 2);
   Assert.AreEqual(5, RowCount('Tabelle1'), 'Zeilen nach InsertRows(1, 2)');
   Assert.AreEqual('Zwei', CellText('Tabelle1', 'A4'), 'alte Zeile 2 ist nicht nach unten gerückt');
@@ -678,39 +680,6 @@ begin
     ['Gibt es nicht 4711']);
 end;
 
-procedure TOOWriterTests.PaperStaysWithoutOverride;
-var
-  options: TOOPrintOptions;
-begin
-  LoadCopy('test.odt', 'I32_Papier.odt');
-  options := TOOPrintOptions.Default;
-  options.OverridePaper := True;
-  options.Orientation := ooLandscape;
-  options.PaperFormat := pfA5;
-  TOOWriterAccess(FWriter).ApplyPrinter(options);
-  // Jetzt nur den Drucker setzen; Hochformat/A4 im Record dürfen ohne OverridePaper nicht ankommen (E2)
-  options := TOOPrintOptions.Default;
-  options.PrinterName := DefaultPrinterName;
-  TOOWriterAccess(FWriter).ApplyPrinter(options);
-  Assert.AreEqual(DefaultPrinterName, string(PrinterSetting('Name')), 'Drucker');
-  Assert.AreEqual(Ord(ooLandscape), Integer(PrinterSetting('PaperOrientation')), 'Ausrichtung verändert');
-  Assert.AreEqual(Ord(pfA5), Integer(PrinterSetting('PaperFormat')), 'Format verändert');
-end;
-
-procedure TOOWriterTests.OverridePaperSetsFormat;
-var
-  options: TOOPrintOptions;
-begin
-  LoadCopy('test.odt', 'I33_Papier.odt');
-  options := TOOPrintOptions.Default;
-  options.OverridePaper := True;
-  options.Orientation := ooLandscape;
-  options.PaperFormat := pfA5;
-  TOOWriterAccess(FWriter).ApplyPrinter(options);
-  Assert.AreEqual(Ord(ooLandscape), Integer(PrinterSetting('PaperOrientation')), 'Ausrichtung');
-  Assert.AreEqual(Ord(pfA5), Integer(PrinterSetting('PaperFormat')), 'Format');
-end;
-
 procedure TOOWriterTests.PrintArgsAreSeparateAndTyped;
 var
   options: TOOPrintOptions;
@@ -745,6 +714,45 @@ begin
       TOOWriterAccess(FWriter).PrintArgs(options);
     end,
     []);
+end;
+
+procedure TOOWriterTests.PrintSettingsLeaveDocumentUntouched;
+var
+  options: TOOPrintOptions;
+  pageStyle: OleVariant;
+  widthBefore: Integer;
+  heightBefore: Integer;
+begin
+  LoadCopy('test.odt', 'I36_Seite.odt');
+  pageStyle := TOOWriterAccess(FWriter).FDocument.getStyleFamilies.getByName('PageStyles').getByName(
+    TOOWriterAccess(FWriter).FDocument.getText.createTextCursor.PageStyleName);
+  widthBefore := pageStyle.Width;
+  heightBefore := pageStyle.Height;
+  options := TOOPrintOptions.Default;
+  options.PrinterName := DefaultPrinterName;
+  TOOWriterAccess(FWriter).ApplyPrinter(options);
+  Assert.AreEqual(DefaultPrinterName, string(PrinterSetting('Name')), 'Drucker nicht gesetzt');
+  // Bis E5 setzte die Bibliothek auf Wunsch auch das Papierformat – das formatierte das Dokument um und machte
+  // es „geändert“ (B26; dieser Test war damit rot)
+  Assert.AreEqual(widthBefore, Integer(pageStyle.Width), 'Seitenbreite verändert');
+  Assert.AreEqual(heightBefore, Integer(pageStyle.Height), 'Seitenhöhe verändert');
+  Assert.IsFalse(Boolean(TOOWriterAccess(FWriter).FDocument.isModified), 'Dokument gilt als geändert');
+end;
+
+procedure TOOWriterTests.ClosedDocumentIsReported;
+var
+  fileName: string;
+begin
+  fileName := LoadCopy('test.odt', 'I37_Verloren.odt');
+  // Hinter dem Rücken des Objekts schließen – so wie ein Benutzer das Fenster in LibreOffice schließt
+  TOOWriterAccess(FWriter).FDocument.close(True);
+  AssertRaisesOO(
+    procedure
+    begin
+      FWriter.Save;
+    end,
+    [ExtractFileName(fileName), 'geschlossen']);
+  Assert.IsFalse(FWriter.IsLoaded, 'Objekt hält das verlorene Dokument noch');
 end;
 
 initialization

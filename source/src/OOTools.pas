@@ -27,19 +27,13 @@ type
   // Ausnahme der Bibliothek: Die Meldung sagt, was scheiterte und welcher Weg offensteht (A5)
   EOOAutomation = class(Exception);
 
-  // Reihenfolge = com.sun.star.view.PaperFormat; der Ordinalwert geht unverändert an LibreOffice (A11)
-  TOOPaperFormat = (pfA3, pfA4, pfA5, pfB4, pfB5, pfLetter, pfLegal, pfTabloid, pfUser);
-  // Reihenfolge = com.sun.star.view.PaperOrientation
-  TOOOrientation = (ooPortrait, ooLandscape);
-
+  // Papierformat und Ausrichtung gibt es hier bewusst nicht: Sie kommen aus der Seitenvorlage des Dokuments.
+  // Per setPrinter wirkt die Ausrichtung gar nicht, und das Format formatiert das Dokument selbst um (B25, B26, E5).
   TOOPrintOptions = record
     PrinterName: string;       // leer = Drucker, den das Dokument bereits hat
     Copies: Integer;
     Collate: Boolean;          // mehrere Kopien sortiert: 1-2-3, 1-2-3
     Pages: string;             // leer = alle, sonst LibreOffice-Syntax, z. B. '1-3;5'
-    OverridePaper: Boolean;    // nur dann gelten Orientation und PaperFormat, sonst bleibt das Dokument, wie es ist
-    Orientation: TOOOrientation;
-    PaperFormat: TOOPaperFormat;
     class function Default: TOOPrintOptions; static;
   end;
 
@@ -49,7 +43,15 @@ function FileNameToUrl(const AFileName: string): string;
 // Ist ein Drucker dieses Namens lokal installiert oder verbunden?
 function PrinterExists(const AName: string): Boolean;
 
-// Packt einen UNO-/OLE-Fehler samt Zusammenhang in EOOAutomation ein (A5)
+type
+  // Wie ein Dokument verloren gehen kann (E6)
+  TOODocumentLoss = (dlNone, dlOfficeGone, dlDocumentClosed);
+
+// Sagt ein Fehler, dass das Dokument verloren ist? Dann hilft kein Wiederholen (E6)
+function DocumentLoss(AError: Exception): TOODocumentLoss;
+
+// Packt einen UNO-/OLE-Fehler samt Zusammenhang in EOOAutomation ein (A5); bei verlorenem Dokument mit
+// Klartext statt „RPC-Server nicht verfügbar“ (E6)
 function WrapUnoError(const AContext: string; AError: Exception): EOOAutomation;
 
 // Leerer UNO-Verweis: LibreOffice liefert „nicht gefunden“ teils als null statt als Ausnahme (B19)
@@ -62,6 +64,7 @@ implementation
 
 uses
   System.Variants,
+  System.Win.ComObj,
   Winapi.Windows,
   Winapi.WinSpool;
 
@@ -77,9 +80,6 @@ begin
   Result.Copies := 1;
   Result.Collate := True;
   Result.Pages := '';
-  Result.OverridePaper := False;
-  Result.Orientation := ooPortrait;
-  Result.PaperFormat := pfA4;
 end;
 
 { ===== Pfade ===== }
@@ -184,6 +184,33 @@ end;
 
 { ===== UNO-Helfer ===== }
 
+function DocumentLoss(AError: Exception): TOODocumentLoss;
+const
+  // COM-Fehlercodes, bei denen der Server weg ist: RPC_S_SERVER_UNAVAILABLE, RPC_S_CALL_FAILED(_DNE),
+  // RPC_E_DISCONNECTED, RPC_E_SERVERDIED(_DNE), CO_E_OBJNOTCONNECTED
+  CGoneCodes: array[0..6] of HRESULT = (HRESULT($800706BA), HRESULT($800706BE), HRESULT($800706BF),
+    HRESULT($80010108), HRESULT($80010007), HRESULT($80010012), HRESULT($800401FD));
+var
+  idx: Integer;
+begin
+  Result := dlNone;
+  // LibreOffice lebt, aber das Dokument ist dort geschlossen worden
+  if AError.Message.Contains('com.sun.star.lang.DisposedException') then
+  begin
+    Exit(dlDocumentClosed);
+  end;
+  if AError is EOleSysError then
+  begin
+    for idx := Low(CGoneCodes) to High(CGoneCodes) do
+    begin
+      if EOleSysError(AError).ErrorCode = CGoneCodes[idx] then
+      begin
+        Exit(dlOfficeGone);
+      end;
+    end;
+  end;
+end;
+
 function WrapUnoError(const AContext: string; AError: Exception): EOOAutomation;
 var
   detail: string;
@@ -194,7 +221,19 @@ begin
     // LibreOffice liefert manche Ausnahmen ohne Meldungstext (B5)
     detail := AError.ClassName + ' ohne Meldungstext';
   end;
-  Result := EOOAutomation.CreateFmt('%s: %s', [AContext, detail]);
+  // Der technische Text bleibt am Ende stehen, er hilft beim Nachforschen
+  case DocumentLoss(AError) of
+    dlOfficeGone:
+      Result := EOOAutomation.CreateFmt('%s: LibreOffice ist nicht mehr erreichbar – es wurde beendet oder ist ' +
+        'abgestürzt. Das Dokument ist für dieses Objekt verloren; nicht gespeicherte Änderungen bietet ' +
+        'LibreOffice beim nächsten Start eventuell zur Wiederherstellung an. Weiter: LibreOffice starten und das ' +
+        'Dokument neu laden. (%s)', [AContext, detail]);
+    dlDocumentClosed:
+      Result := EOOAutomation.CreateFmt('%s: Das Dokument ist in LibreOffice nicht mehr offen – es wurde dort ' +
+        'geschlossen. Weiter: das Dokument neu laden. (%s)', [AContext, detail]);
+  else
+    Result := EOOAutomation.CreateFmt('%s: %s', [AContext, detail]);
+  end;
 end;
 
 function IsNullObject(const AValue: OleVariant): Boolean;

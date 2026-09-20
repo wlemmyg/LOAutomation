@@ -21,6 +21,7 @@ file, You can obtain one at https://mozilla.org/MPL/2.0/.
 interface
 
 uses
+  System.SysUtils,
   OOTools;
 
 type
@@ -39,6 +40,8 @@ type
     FDocument: OleVariant;
     FFileName: string;
     function MakePropertyValue(const AName: string; const AValue: OleVariant): OleVariant;
+    // Packt einen UNO-Fehler ein und lässt ein verlorenes Dokument los; zum Werfen gedacht (E6)
+    function DocumentError(const AContext: string; AError: Exception): EOOAutomation;
     procedure RequireDocument;
     procedure ApplyPrinter(const AOptions: TOOPrintOptions);
     function PrintArgs(const AOptions: TOOPrintOptions): OleVariant;
@@ -65,7 +68,6 @@ type
 implementation
 
 uses
-  System.SysUtils,
   System.Variants,
   System.Win.ComObj;
 
@@ -92,7 +94,19 @@ begin
   // Scheitert das Schließen, kommt die Meldung durch, statt verschluckt zu werden (Plan 7.2).
   if IsLoaded then
   begin
-    CloseFile(False);
+    try
+      CloseFile(False);
+    except
+      on EOOAutomation do
+      begin
+        // War das Dokument verloren, hat CloseFile es losgelassen – dann ist das Ziel erreicht und es gibt
+        // nichts mehr zu melden (E6). Jeder andere Fehler kommt durch.
+        if IsLoaded then
+        begin
+          raise;
+        end;
+      end;
+    end;
   end;
   inherited Destroy;
 end;
@@ -139,7 +153,7 @@ begin
   except
     on E: EOleSysError do
     begin
-      raise WrapUnoError(Format('Laden von "%s" fehlgeschlagen', [AFileName]), E);
+      raise DocumentError(Format('Laden von "%s" fehlgeschlagen', [AFileName]), E);
     end;
   end;
   if IsNullObject(FDocument) then
@@ -172,7 +186,7 @@ begin
   except
     on E: EOleSysError do
     begin
-      raise WrapUnoError(Format('Schließen von "%s" fehlgeschlagen', [FFileName]), E);
+      raise DocumentError(Format('Schließen von "%s" fehlgeschlagen', [FFileName]), E);
     end;
   end;
   ReleaseDocument;
@@ -199,7 +213,7 @@ begin
   except
     on E: EOleSysError do
     begin
-      raise WrapUnoError(Format('Speichern von "%s" fehlgeschlagen', [FFileName]), E);
+      raise DocumentError(Format('Speichern von "%s" fehlgeschlagen', [FFileName]), E);
     end;
   end;
 end;
@@ -251,7 +265,7 @@ begin
   except
     on E: EOleSysError do
     begin
-      raise WrapUnoError(Format('%s von "%s" nach "%s" fehlgeschlagen', [AAction, FFileName, AFileName]), E);
+      raise DocumentError(Format('%s von "%s" nach "%s" fehlgeschlagen', [AAction, FFileName, AFileName]), E);
     end;
   end;
   // LibreOffice meldet auch dann Erfolg, wenn es an einen falsch gelesenen Pfad geschrieben hat (B14)
@@ -276,43 +290,31 @@ begin
   except
     on E: EOleSysError do
     begin
-      raise WrapUnoError(Format('Drucken von "%s" fehlgeschlagen', [FFileName]), E);
+      raise DocumentError(Format('Drucken von "%s" fehlgeschlagen', [FFileName]), E);
     end;
   end;
 end;
 
 procedure TOOObject.ApplyPrinter(const AOptions: TOOPrintOptions);
-var
-  settings: TArray<OleVariant>;
 begin
   RequireDocument;
-  if (AOptions.PrinterName <> '') and not PrinterExists(AOptions.PrinterName) then
+  // Ohne Druckernamen bleibt der Drucker des Dokuments. Papier setzt die Bibliothek nie: setPrinter mit
+  // PaperFormat formatierte das Dokument selbst um (B26, E5)
+  if AOptions.PrinterName = '' then
+  begin
+    Exit;
+  end;
+  if not PrinterExists(AOptions.PrinterName) then
   begin
     raise EOOAutomation.CreateFmt('Drucker "%s" ist nicht installiert; LibreOffice würde sonst still auf den ' +
       'Standarddrucker ausweichen.', [AOptions.PrinterName]);
   end;
-  settings := nil;
-  if AOptions.PrinterName <> '' then
-  begin
-    settings := settings + [MakePropertyValue('Name', AOptions.PrinterName)];
-  end;
-  // Ohne OverridePaper bleiben Format und Ausrichtung des Dokuments unangetastet (E2)
-  if AOptions.OverridePaper then
-  begin
-    // Ganzzahlen kommen als UNO-Enum an (B18); die Ordinalwerte entsprechen UNO (A11)
-    settings := settings + [MakePropertyValue('PaperOrientation', Ord(AOptions.Orientation))];
-    settings := settings + [MakePropertyValue('PaperFormat', Ord(AOptions.PaperFormat))];
-  end;
-  if Length(settings) = 0 then
-  begin
-    Exit;
-  end;
   try
-    FDocument.setPrinter(MakeSequence(settings));
+    FDocument.setPrinter(MakeSequence([MakePropertyValue('Name', AOptions.PrinterName)]));
   except
     on E: EOleSysError do
     begin
-      raise WrapUnoError(Format('Druckereinstellung für "%s" fehlgeschlagen', [FFileName]), E);
+      raise DocumentError(Format('Druckereinstellung für "%s" fehlgeschlagen', [FFileName]), E);
     end;
   end;
 end;
@@ -349,7 +351,7 @@ begin
   except
     on E: EOleSysError do
     begin
-      raise WrapUnoError(Format('Fenster von "%s" nicht erreichbar', [FFileName]), E);
+      raise DocumentError(Format('Fenster von "%s" nicht erreichbar', [FFileName]), E);
     end;
   end;
 end;
@@ -365,6 +367,16 @@ begin
 end;
 
 { ===== Helfer ===== }
+
+function TOOObject.DocumentError(const AContext: string; AError: Exception): EOOAutomation;
+begin
+  // Ist das Dokument verloren, hilft kein Wiederholen: Der Verweis ist tot, das Objekt gilt danach als leer (E6)
+  if (DocumentLoss(AError) <> dlNone) and IsLoaded then
+  begin
+    ReleaseDocument;
+  end;
+  Result := WrapUnoError(AContext, AError);
+end;
 
 function TOOObject.MakePropertyValue(const AName: string; const AValue: OleVariant): OleVariant;
 begin
