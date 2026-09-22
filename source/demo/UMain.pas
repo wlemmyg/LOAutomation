@@ -61,7 +61,25 @@ type
     edtPages: TEdit;
     btnPrint: TButton;
     lblPrintHint: TLabel;
+    grpMore: TGroupBox;
+    lblSearch: TLabel;
+    edtSearch: TEdit;
+    lblReplace: TLabel;
+    edtReplace: TEdit;
+    chkSearchCase: TCheckBox;
+    btnReplaceAll: TButton;
+    lblBookmark: TLabel;
+    edtBookmark: TEdit;
+    btnReadBookmark: TButton;
+    btnInsertImage: TButton;
+    btnReadTable: TButton;
+    lblFilter: TLabel;
+    cboFilter: TComboBox;
+    btnSaveFiltered: TButton;
+    lblMoreHint: TLabel;
     memLog: TMemo;
+    dlgImage: TOpenDialog;
+    dlgSaveFiltered: TSaveDialog;
     dlgOpen: TOpenDialog;
     dlgSave: TSaveDialog;
     dlgSavePdf: TSaveDialog;
@@ -80,6 +98,11 @@ type
     procedure btnFillClick(Sender: TObject);
     procedure btnInsertRowsClick(Sender: TObject);
     procedure btnPrintClick(Sender: TObject);
+    procedure btnReplaceAllClick(Sender: TObject);
+    procedure btnReadBookmarkClick(Sender: TObject);
+    procedure btnInsertImageClick(Sender: TObject);
+    procedure btnReadTableClick(Sender: TObject);
+    procedure btnSaveFilteredClick(Sender: TObject);
   private
     FWriter: TOOWriter;
     FUpdating: Boolean;  // Häkchen per Code setzen, ohne OnClick auszulösen
@@ -121,6 +144,12 @@ begin
     begin
       FWriter := TOOWriter.Create;
     end);
+  // Name=Wert: Dateiendung = UNO-Filtername
+  cboFilter.Items.Add('docx=' + OOFilterDocx);
+  cboFilter.Items.Add('rtf=' + OOFilterRtf);
+  cboFilter.Items.Add('txt=' + OOFilterText);
+  cboFilter.Items.Add('odt=' + OOFilterOdt);
+  cboFilter.ItemIndex := 0;
 end;
 
 procedure TMainForm.FormClose(Sender: TObject; var Action: TCloseAction);
@@ -340,6 +369,89 @@ begin
     end);
 end;
 
+{ ===== Suchen, Bilder, Lesen, Filter ===== }
+
+procedure TMainForm.btnReplaceAllClick(Sender: TObject);
+var
+  options: TOOSearchOptions;
+begin
+  options := TOOSearchOptions.Default;
+  options.CaseSensitive := chkSearchCase.Checked;
+  // Die Anzahl wird angezeigt, nicht bewertet: kein Treffer ist kein Fehler
+  RunAction(Format('Ersetzen "%s" durch "%s"', [edtSearch.Text, edtReplace.Text]),
+    procedure
+    var
+      count: Integer;
+    begin
+      count := FWriter.ReplaceAll(edtSearch.Text, edtReplace.Text, options);
+      Log(Format('  %d Ersetzung(en) – erfasst auch Kopf-, Fußzeile und Textrahmen', [count]));
+    end);
+end;
+
+procedure TMainForm.btnReadBookmarkClick(Sender: TObject);
+begin
+  // Punktförmige Textmarken haben keinen lesbaren Inhalt; die Bibliothek sagt das laut
+  RunAction(Format('Textmarke "%s" lesen', [edtBookmark.Text]),
+    procedure
+    begin
+      Log(Format('  Inhalt: "%s"', [FWriter.ReadBookmark(edtBookmark.Text)]));
+    end);
+end;
+
+procedure TMainForm.btnInsertImageClick(Sender: TObject);
+begin
+  if not dlgImage.Execute then
+  begin
+    Exit;
+  end;
+  // Ohne Maße nimmt die Bibliothek die natürliche Größe und hält das Seitenverhältnis
+  RunAction(Format('Bild "%s" an Textmarke "%s"', [ExtractFileName(dlgImage.FileName), edtBookmark.Text]),
+    procedure
+    begin
+      FWriter.InsertImageAtBookmark(edtBookmark.Text, dlgImage.FileName);
+    end);
+end;
+
+procedure TMainForm.btnReadTableClick(Sender: TObject);
+begin
+  RunAction(Format('Tabelle "%s" lesen', [cboTables.Text]),
+    procedure
+    var
+      grid: TArray<TArray<string>>;
+      idxRow: Integer;
+    begin
+      grid := FWriter.TableByName(cboTables.Text).ReadAll;
+      for idxRow := 0 to High(grid) do
+      begin
+        Log(Format('  Zeile %d: %s', [idxRow + 1, string.Join(' | ', grid[idxRow])]));
+      end;
+    end);
+end;
+
+procedure TMainForm.btnSaveFilteredClick(Sender: TObject);
+var
+  filterName: string;
+begin
+  if cboFilter.ItemIndex < 0 then
+  begin
+    ShowMessage('Bitte erst einen Filter wählen.');
+    Exit;
+  end;
+  filterName := cboFilter.Items.ValueFromIndex[cboFilter.ItemIndex];
+  dlgSaveFiltered.DefaultExt := cboFilter.Items.Names[cboFilter.ItemIndex];
+  dlgSaveFiltered.Filter := Format('%s (*.%0:s)|*.%0:s|Alle Dateien (*.*)|*.*',
+    [dlgSaveFiltered.DefaultExt]);
+  if not dlgSaveFiltered.Execute then
+  begin
+    Exit;
+  end;
+  RunAction(Format('Kopie speichern als "%s" nach %s', [filterName, dlgSaveFiltered.FileName]),
+    procedure
+    begin
+      FWriter.SaveCopyAs(dlgSaveFiltered.FileName, filterName);
+    end);
+end;
+
 { ===== Helfer ===== }
 
 procedure TMainForm.RunAction(const ACaption: string; const AAction: TProc);
@@ -420,7 +532,8 @@ begin
   chkHidden.Enabled := connected;
   for control in TArray<TControl>.Create(btnClose, chkSaveOnClose, btnSave, btnSaveAs, btnSaveCopy, btnExportPdf,
     btnHandOver, chkVisible, vleBookmarks, btnWriteBookmarks, cboTables, grdData, spnStartRow, btnFill,
-    spnAfterRow, spnRowCount, btnInsertRows, edtPages, btnPrint) do
+    spnAfterRow, spnRowCount, btnInsertRows, edtPages, btnPrint, edtSearch, edtReplace, chkSearchCase,
+    btnReplaceAll, edtBookmark, btnReadBookmark, btnInsertImage, btnReadTable, cboFilter, btnSaveFiltered) do
   begin
     control.Enabled := loaded;
   end;

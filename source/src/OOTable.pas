@@ -3,7 +3,7 @@
 Autor: Wolfgang Lemmermeyer
 Webseite: https://delphi-tutorials.de
 Kontakt: lemmy@delphi-tutorials.de
-Version: 0.3
+Version: 0.3.1
 Datum: 12.11.2006, überarbeitet 2026
 
 Hilfsklasse für den Tabellenzugriff

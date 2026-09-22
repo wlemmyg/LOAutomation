@@ -7,7 +7,7 @@ interface
 Autor: Wolfgang Lemmermeyer
 Webseite: https://delphi-tutorials.de
 Kontakt: lemmy@delphi-tutorials.de
-Version: 0.3
+Version: 0.3.1
 Datum: 26.02.2005, überarbeitet 2026
 
 Übergreifende Typen und Hilfsfunktionen, ohne LibreOffice testbar

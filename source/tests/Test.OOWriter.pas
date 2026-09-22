@@ -41,6 +41,7 @@ type
     function GraphicWidth(AIndex: Integer): Integer;
     function GraphicHeight(AIndex: Integer): Integer;
     function GraphicAnchor(AIndex: Integer): Integer;
+    function ParagraphLayout: string;
   public
     [SetupFixture]
     procedure SetupFixture;
@@ -205,6 +206,11 @@ type
     [Test]
     [MaxTime(CMaxTime)]
     procedure InsertImageUnknownBookmarkRaises;
+
+    // I56: das Bild sitzt AN der Textmarke, nicht am Absatzende (B38, Klickprobe 2026-09-22)
+    [Test]
+    [MaxTime(CMaxTime)]
+    procedure InsertImageSitsAtBookmark;
 
     // I48-I52: Lesen statt nur schreiben (B19, B31, Q7)
     [Test]
@@ -865,6 +871,31 @@ begin
   Result := TOOWriterAccess(FWriter).FDocument.getGraphicObjects.getByIndex(AIndex).AnchorType;
 end;
 
+function TOOWriterTests.ParagraphLayout: string;
+var
+  paragraphs: OleVariant;
+  portions: OleVariant;
+  portion: OleVariant;
+begin
+  // Der erste Absatz als Zeichenkette, das Bild als [BILD]: damit wird die POSITION pruefbar und nicht
+  // nur die Anzahl. Textmarken sind eigene Abschnitte ohne Text und fallen dabei heraus.
+  Result := '';
+  paragraphs := TOOWriterAccess(FWriter).FDocument.getText.createEnumeration;
+  portions := paragraphs.nextElement.createEnumeration;
+  while Boolean(portions.hasMoreElements) do
+  begin
+    portion := portions.nextElement;
+    if VarToStr(portion.TextPortionType) = 'Frame' then
+    begin
+      Result := Result + '[BILD]';
+    end
+    else
+    begin
+      Result := Result + VarToStr(portion.getString);
+    end;
+  end;
+end;
+
 { ===== I38-I41: Suchen und Ersetzen ===== }
 
 procedure TOOWriterTests.ReplaceAllReturnsCount;
@@ -991,6 +1022,20 @@ begin
     end,
     ['GibtEsNicht', 'Punkt']);
   Assert.AreEqual(0, GraphicCount, 'trotz Fehler wurde ein Bild eingefuegt');
+end;
+
+{ ===== I56: Bild an der Textmarke, nicht am Absatzende ===== }
+
+procedure TOOWriterTests.InsertImageSitsAtBookmark;
+var
+  logo: string;
+begin
+  logo := TTestEnvironment.CopyTestFile('logo.png', 'I56_logo.png');
+  FWriter.LoadFile(TTestEnvironment.CreateMarkedDocument('I56_Marken.odt'), True);
+  FWriter.InsertImageAtBookmark('Punkt', logo);
+  // Die Marke Punkt steht zwischen "MARKE im Fliesstext " und "SPANNE" - genau dort gehoert das Bild hin.
+  // Wird AnchorType erst NACH dem Einfuegen gesetzt, haengt LibreOffice es ans Absatzende um (B38).
+  Assert.AreEqual('MARKE im Fliesstext [BILD]SPANNE', ParagraphLayout);
 end;
 
 { ===== I48-I52: Lesen statt nur schreiben ===== }

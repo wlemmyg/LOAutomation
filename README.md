@@ -164,6 +164,10 @@ all pages)
   bookmark returns nothing — even right after you wrote to it. Since an empty string could not be told apart
   from an empty field, `ReadBookmark` raises instead. To read a value back, put the bookmark *over* the text
   in the template.
+- **Replacing keeps the formatting of what it replaced.** A bold, red placeholder yields bold, red text,
+  however much longer the replacement is. ⚠️ If the search text spans a formatting boundary, the formatting
+  at its **start** wins for the whole replacement — a placeholder whose opening bracket was accidentally made
+  bold produces a fully bold value.
 - **Zero replacements is not an error.** `ReplaceAll` returns the count and leaves the judgement to you —
   optional placeholders are normal. Check the result if a hit is required.
 - **An inserted image needs a size.** LibreOffice gives a freshly inserted image 566 × 566 (1/100 mm)
@@ -216,6 +220,15 @@ Two environment variables:
 The integration tests are in the DUnitX category `LibreOffice`. They work on copies in the temp folder and
 leave LibreOffice as they found it: they close only the documents they opened themselves, and they shut
 LibreOffice down only if it was not already running when the test run started.
+
+### Changes in 0.3.1
+
+- **An image now really sits at the bookmark.** `InsertImageAtBookmark` set the anchor type *after* inserting
+  the image, which made LibreOffice re-anchor it: the image ended up at the end of the paragraph instead of at
+  the bookmark. The anchor type is set first now. This was found by clicking through the demo, not by the
+  tests — they counted the images and checked the aspect ratio, and both were right. If you write something
+  *to a place*, test the place.
+- **Demo:** the controls of the newest group stay disabled until a document is loaded.
 
 ### Changes in 0.3.0
 
@@ -271,7 +284,7 @@ Late binding to UNO has a few sharp edges that cost time to find again:
 
 ### Status
 
-Version 0.3. The library is being modernised, and the API may still change before 1.0. Only Writer is
+Version 0.3.1. The library is being modernised, and the API may still change before 1.0. Only Writer is
 supported so far.
 
 ### Background
@@ -449,6 +462,10 @@ Seiten, ohne festen Drucker)
   kein Bereich, und liefern deshalb nichts — auch unmittelbar nachdem man hineingeschrieben hat. Da ein leerer
   String von einem leeren Feld nicht zu unterscheiden wäre, bricht `ReadBookmark` stattdessen ab. Wer einen
   Wert zurücklesen will, legt die Textmarke in der Vorlage *über* den Text.
+- **Ersetzen behält die Formatierung des Ersetzten.** Ein fetter, roter Platzhalter ergibt fetten, roten
+  Text, so viel länger der Ersatz auch ist. ⚠️ Überspannt der Suchtext eine Formatgrenze, gewinnt die
+  Formatierung am **Anfang** für den ganzen Ersatz — ein Platzhalter, dessen öffnende Klammer versehentlich
+  fett ist, liefert einen durchgehend fetten Wert.
 - **Null Ersetzungen sind kein Fehler.** `ReplaceAll` liefert die Anzahl und überlässt das Urteil dem
   Aufrufer — optionale Platzhalter sind alltäglich. Wer einen Treffer braucht, prüft das Ergebnis.
 - **Ein eingefügtes Bild braucht eine Größe.** LibreOffice gibt einem frisch eingefügten Bild 566 × 566
@@ -503,6 +520,15 @@ Zwei Umgebungsvariablen:
 Die Integrationstests stehen in der DUnitX-Kategorie `LibreOffice`. Sie arbeiten auf Kopien im Temp-Ordner und
 hinterlassen LibreOffice so, wie sie es vorgefunden haben: Sie schließen nur die Dokumente, die sie selbst
 geöffnet haben, und beenden LibreOffice nur dann, wenn es zu Beginn des Laufs nicht schon lief.
+
+### Änderungen in 0.3.1
+
+- **Ein Bild sitzt jetzt wirklich an der Textmarke.** `InsertImageAtBookmark` setzte die Verankerung *nach*
+  dem Einfügen; LibreOffice hängte das Bild daraufhin um, und es landete am Ende des Absatzes statt an der
+  Textmarke. Die Verankerung steht jetzt vorn. Gefunden beim Durchklicken der Demo, nicht von den Tests —
+  die zählten die Bilder und prüften das Seitenverhältnis, und beides stimmte. Wer etwas *an eine Stelle*
+  schreibt, sollte die Stelle prüfen.
+- **Demo:** Die Bedienelemente der neuesten Gruppe bleiben grau, bis ein Dokument geladen ist.
 
 ### Änderungen in 0.3.0
 
@@ -562,7 +588,7 @@ Late Binding an UNO hat ein paar Fallen, die man sonst zweimal sucht:
 
 ### Stand
 
-Version 0.3. Die Bibliothek wird gerade modernisiert, bis 1.0 kann sich die API noch ändern. Bisher wird nur
+Version 0.3.1. Die Bibliothek wird gerade modernisiert, bis 1.0 kann sich die API noch ändern. Bisher wird nur
 Writer unterstützt.
 
 ### Hintergrund

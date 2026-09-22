@@ -3,7 +3,7 @@
 Autor: Wolfgang Lemmermeyer
 Webseite: https://delphi-tutorials.de
 Kontakt: lemmy@delphi-tutorials.de
-Version: 0.3
+Version: 0.3.1
 Datum: 26.02.2005, überarbeitet 2026
 
 Klasse für den OLE-Zugriff auf LibreOffice Writer
@@ -238,9 +238,11 @@ begin
   image := FDocument.createInstance('com.sun.star.text.TextGraphicObject');
   image.Graphic := GraphicFromFile(AFileName);
   try
-    anchor.getText.insertTextContent(anchor, image, False);
-    // AS_CHARACTER: das Bild sitzt im Textfluss; LibreOffice hängt es sonst an den Absatz (B33)
+    // AS_CHARACTER: das Bild sitzt im Textfluss; LibreOffice hängt es sonst an den Absatz (B33).
+    // Muss VOR dem Einfügen stehen: nachträglich gesetzt hängt LibreOffice das Bild um und es
+    // landet am Absatzende statt an der Textmarke (B38)
     image.AnchorType := 1;
+    anchor.getText.insertTextContent(anchor, image, False);
     // Frisch eingefuegt steht es auf 566 x 566, unabhängig vom Bild (B30) – die Größe muss gesetzt werden
     if AUseGivenSize then
     begin
